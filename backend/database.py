@@ -1,10 +1,20 @@
 import re
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Table, Column, Integer, String, Float, DateTime, MetaData, func
+from sqlalchemy import Table, Column, Integer, String, Numeric, DateTime, MetaData, func
 from sqlalchemy import inspect
 from pydantic_settings import BaseSettings
 import os
+
+
+def escape_like(s: str, escape_char: str = "/") -> str:
+    """转义 LIKE 模式中的特殊通配符 _ 和 %，防止科目编码含这些字符时匹配错误。
+    用法: column.like(f"{escape_like(prefix)}%", escape="/")
+    """
+    result = s.replace(escape_char, escape_char + escape_char)
+    result = result.replace("%", escape_char + "%")
+    result = result.replace("_", escape_char + "_")
+    return result
 
 
 class Settings(BaseSettings):
@@ -52,8 +62,6 @@ async def get_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
-        finally:
-            await session.close()
 
 
 async def init_db():
@@ -92,8 +100,8 @@ def _build_journal_table(table_name: str) -> Table:
         Column('summary', String(500), default=''),
         Column('subject_code', String(50), nullable=False, index=True),
         Column('subject_name', String(200), default=''),
-        Column('debit', Float, default=0.0),
-        Column('credit', Float, default=0.0),
+        Column('debit', Numeric(18, 2), default=0.0),
+        Column('credit', Numeric(18, 2), default=0.0),
         Column('dimension', String(500), default=''),
         Column('created_at', DateTime, server_default=func.now()),
         extend_existing=True,

@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db
-from backend.routers import balance, journal, books, export
+from backend.routers import balance, journal, books, export, draft, adjustments
 
 
 @asynccontextmanager
@@ -20,16 +20,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8001", "http://127.0.0.1:8001"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8001", "http://127.0.0.1:8001", "http://localhost:8005", "http://127.0.0.1:8005"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(balance.router)
 app.include_router(journal.router)
 app.include_router(books.router)
 app.include_router(export.router)
+app.include_router(draft.router)
+app.include_router(adjustments.router)
 
 
 @app.get("/")

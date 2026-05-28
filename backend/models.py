@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, func
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, func
 from backend.database import Base
 
 
@@ -22,16 +22,31 @@ class BalanceSubject(Base):
     book_name = Column(String(200), default="default", nullable=False, index=True, comment="所属账套")
     code = Column(String(50), nullable=False, index=True, comment="科目编码")
     name = Column(String(200), nullable=False, comment="科目名称")
-    year_start_debit = Column(Float, default=0.0, comment="年初余额-借方")
-    year_start_credit = Column(Float, default=0.0, comment="年初余额-贷方")
-    period_debit = Column(Float, default=0.0, comment="本期发生额-借方")
-    period_credit = Column(Float, default=0.0, comment="本期发生额-贷方")
-    year_total_debit = Column(Float, default=0.0, comment="本年累计-借方")
-    year_total_credit = Column(Float, default=0.0, comment="本年累计-贷方")
-    end_debit = Column(Float, default=0.0, comment="期末余额-借方")
-    end_credit = Column(Float, default=0.0, comment="期末余额-贷方")
+    year_start_debit = Column(Numeric(18, 2), default=0.0, comment="年初余额-借方")
+    year_start_credit = Column(Numeric(18, 2), default=0.0, comment="年初余额-贷方")
+    period_debit = Column(Numeric(18, 2), default=0.0, comment="本期发生额-借方")
+    period_credit = Column(Numeric(18, 2), default=0.0, comment="本期发生额-贷方")
+    year_total_debit = Column(Numeric(18, 2), default=0.0, comment="本年累计-借方")
+    year_total_credit = Column(Numeric(18, 2), default=0.0, comment="本年累计-贷方")
+    end_debit = Column(Numeric(18, 2), default=0.0, comment="期末余额-借方")
+    end_credit = Column(Numeric(18, 2), default=0.0, comment="期末余额-贷方")
     dimension = Column(String(500), default="", comment="核算维度")
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+
+
+class AdjustmentEntry(Base):
+    __tablename__ = "adjustment_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    book_name = Column(String(200), default="default", nullable=False, index=True, comment="所属账套")
+    voucher_no = Column(String(50), default="", comment="调整凭证号，如 T1")
+    summary = Column(String(500), default="", comment="调整摘要说明")
+    subject_code = Column(String(50), nullable=False, index=True, comment="科目编码")
+    subject_name = Column(String(200), default="", comment="科目名称")
+    debit = Column(Numeric(18, 2), default=0.0, comment="借方金额")
+    credit = Column(Numeric(18, 2), default=0.0, comment="贷方金额")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="修改时间")
 
 
 class JournalEntry(Base):
@@ -40,12 +55,16 @@ class JournalEntry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     book_name = Column(String(200), default="default", nullable=False, index=True, comment="所属账套")
     org = Column(String(100), default="", comment="核算组织")
-    period = Column(String(50), default="", comment="期间")
+    period = Column(String(50), default="", index=True, comment="期间")
     voucher_no = Column(String(50), nullable=False, index=True, comment="凭证号")
     summary = Column(String(500), default="", comment="摘要")
     subject_code = Column(String(50), nullable=False, index=True, comment="科目编码")
     subject_name = Column(String(200), default="", comment="科目名称")
-    debit = Column(Float, default=0.0, comment="借方金额")
-    credit = Column(Float, default=0.0, comment="贷方金额")
+    debit = Column(Numeric(18, 2), default=0.0, comment="借方金额")
+    credit = Column(Numeric(18, 2), default=0.0, comment="贷方金额")
     dimension = Column(String(500), default="", comment="核算维度")
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )

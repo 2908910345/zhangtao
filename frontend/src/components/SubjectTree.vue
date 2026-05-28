@@ -28,9 +28,13 @@
       @node-dblclick="handleNodeDblclick"
     >
       <template #default="{ data }">
-        <span class="tree-node">
+        <span class="tree-node" :class="{ 'dim-node': data.is_dimension }">
+          <el-icon v-if="data.is_dimension" class="dim-icon" :size="14"><PriceTag /></el-icon>
           <span class="node-label">{{ data.name }}</span>
-          <span class="node-code">{{ data.code }}</span>
+          <span v-if="!data.is_dimension" class="node-code">{{ data.code }}</span>
+          <span v-if="data.is_dimension && data.dimension" class="node-dim-type">
+            {{ data.dimension.split(':')[0] }}
+          </span>
           <span v-if="data.end_debit || data.end_credit" class="node-amount">
             {{ formatAmount(data.end_debit || data.end_credit) }}
           </span>
@@ -42,7 +46,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { Search } from '@element-plus/icons-vue'
+import { Search, PriceTag } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
 
 const props = defineProps({
@@ -118,8 +122,17 @@ function handleNodeDblclick(data) {
   align-items: center;
   width: 100%;
   font-size: 13px;
-  gap: 8px;
+  gap: 6px;
   padding-right: 6px;
+}
+
+.tree-node.dim-node {
+  font-size: 12px;
+}
+
+.dim-icon {
+  color: #e6a23c;
+  flex-shrink: 0;
 }
 
 .node-label {
@@ -131,10 +144,24 @@ function handleNodeDblclick(data) {
   font-weight: 500;
 }
 
+.dim-node .node-label {
+  font-weight: 400;
+  color: #8c6d1f;
+}
+
 .node-code {
   color: #a8abb2;
   font-size: 11px;
   font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  flex-shrink: 0;
+}
+
+.node-dim-type {
+  color: #e6a23c;
+  font-size: 10px;
+  background: #fdf6ec;
+  padding: 1px 6px;
+  border-radius: 3px;
   flex-shrink: 0;
 }
 

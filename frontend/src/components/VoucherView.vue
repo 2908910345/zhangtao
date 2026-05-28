@@ -194,7 +194,7 @@ const counterparties = computed(() => {
   const groups = {}
   for (let i = 0; i < data.length; i++) {
     const row = data[i]
-    const key = (row.summary || '')
+    const key = `${row.voucher_no || ''}|${row.summary || ''}`
     if (!groups[key]) groups[key] = []
     groups[key].push(i)
   }

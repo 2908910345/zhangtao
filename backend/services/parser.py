@@ -99,8 +99,6 @@ def parse_balance_sheet(file_obj):
             for cat, (debit_var, credit_var) in parent_categories.items():
                 if cat in parent:
                     if '借方' in sub:
-                        vars()[debit_var] = c
-                        # Set directly
                         if debit_var == 'year_start_debit_col':
                             year_start_debit_col = c
                         elif debit_var == 'period_debit_col':
@@ -110,7 +108,6 @@ def parse_balance_sheet(file_obj):
                         elif debit_var == 'end_debit_col':
                             end_debit_col = c
                     elif '贷方' in sub:
-                        vars()[credit_var] = c
                         if credit_var == 'year_start_credit_col':
                             year_start_credit_col = c
                         elif credit_var == 'period_credit_col':
@@ -176,35 +173,6 @@ def parse_balance_sheet(file_obj):
             'end_credit': get_col(end_credit_col),
             'dimension': dim_val,
         })
-
-    wb.close()
-    return items
-
-
-def parse_journal(file_obj):
-    wb = openpyxl.load_workbook(file_obj, data_only=True)
-    ws = wb.worksheets[0]
-    rows = list(ws.iter_rows(values_only=True))
-
-    header_row_idx = find_header_row(rows, ['凭证号', '科目编码', '摘要', '借方', '贷方'])
-    if header_row_idx == -1:
-        raise ValueError('无法识别序时账格式，请确保表头包含"凭证号"、"科目编码"、"借方"、"贷方"等字段')
-
-    header_row = [str(c) if c else '' for c in rows[header_row_idx]]
-
-    col_map = _build_journal_col_map(header_row)
-
-    if 'voucher_no' not in col_map or 'code' not in col_map:
-        raise ValueError('未找到"凭证号"或"科目编码"列，请检查文件格式')
-
-    items = []
-    for r in range(header_row_idx + 1, len(rows)):
-        row = rows[r]
-        if not row or len(row) < 2:
-            continue
-        item = _parse_journal_row(row, col_map)
-        if item:
-            items.append(item)
 
     wb.close()
     return items

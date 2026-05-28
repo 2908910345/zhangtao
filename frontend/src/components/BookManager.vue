@@ -44,7 +44,7 @@
             {{ row.updated_at ? new Date(row.updated_at).toLocaleString('zh-CN') : '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" link :disabled="row.name === currentBook" @click="handleSwitch(row.name)">
               {{ row.name === currentBook ? '当前' : '切换' }}
@@ -52,11 +52,16 @@
             <el-button size="small" type="success" link :disabled="row.name === currentBook" @click="handleImportToBook(row.name)">
               导入数据
             </el-button>
+            <el-button size="small" type="warning" link @click="handleBackup(row.name)">备份</el-button>
             <el-button size="small" type="danger" link @click="handleDelete(row.name)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
       <template #footer>
+        <el-button @click="triggerRestore">
+          <el-icon><Upload /></el-icon> 从备份恢复
+        </el-button>
+        <input ref="restoreInput" type="file" accept=".json" style="display:none" @change="handleRestore" />
         <el-button @click="manageDialog = false">关闭</el-button>
       </template>
     </el-dialog>
@@ -82,7 +87,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { FolderOpened, Plus, WarningFilled } from '@element-plus/icons-vue'
-import { createBook, switchBook, deleteBook, setCurrentBook, getCurrentBook, listBooks } from '../api/index.js'
+import { createBook, switchBook, deleteBook, setCurrentBook, getCurrentBook, listBooks, backupBook, restoreBook } from '../api/index.js'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -100,6 +105,7 @@ const saving = ref(false)
 const creating = ref(false)
 const saveForm = ref({ name: '', desc: '' })
 const createForm = ref({ name: '', desc: '' })
+const restoreInput = ref(null)
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -158,7 +164,8 @@ async function handleSave() {
     saveDialog.value = false
     emit('update:visible', false)
     emit('switch-and-import', saveForm.value.name.trim())
-  } catch { saving.value = false }
+  } catch {
+  } finally { saving.value = false }
 }
 
 async function handleSwitch(name) {
@@ -191,6 +198,41 @@ async function handleDelete(name) {
       emit('book-changed')
     }
   } catch {}
+}
+
+async function handleBackup(name) {
+  try {
+    const blob = await backupBook(name)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${name}_backup.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    ElMessage.success('备份已下载')
+  } catch {
+    ElMessage.error('备份失败')
+  }
+}
+
+function triggerRestore() {
+  restoreInput.value?.click()
+}
+
+async function handleRestore(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  event.target.value = ''
+  try {
+    const res = await restoreBook(file)
+    ElMessage.success(`账套「${res.name}」已从备份恢复`)
+    await loadBooks()
+    emit('book-changed')
+  } catch {
+    ElMessage.error('恢复失败')
+  }
 }
 </script>
 

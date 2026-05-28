@@ -8,6 +8,10 @@
         </el-tag>
       </div>
       <div class="header-right">
+        <el-button size="small" @click="searchVisible = true">
+          <el-icon><Search /></el-icon> 搜索
+          <span class="shortcut-hint">Ctrl+K</span>
+        </el-button>
         <el-button size="small" @click="openBookManager('manage')">
           <el-icon><FolderOpened /></el-icon> 账套列表
         </el-button>
@@ -42,7 +46,11 @@
           <div class="panel-header">
             <span v-if="activeTab === 'balance'">科目余额表</span>
             <span v-else-if="activeTab === 'journal'">序时账明细</span>
+            <span v-else-if="activeTab === 'voucher-book'">凭证簿</span>
             <span v-else-if="activeTab === 'dimension'">核算维度</span>
+            <span v-else-if="activeTab === 'draft'">底稿模板</span>
+            <span v-else-if="activeTab === 'adjustment'">审计调整</span>
+            <span v-else-if="activeTab === 'trial-balance'">试算平衡表</span>
             <span v-else>数据导入</span>
           </div>
 
@@ -50,7 +58,11 @@
             <el-radio-group v-model="activeTab" size="small">
               <el-radio-button value="balance">科目余额表</el-radio-button>
               <el-radio-button value="journal">序时账</el-radio-button>
+              <el-radio-button value="voucher-book">凭证簿</el-radio-button>
               <el-radio-button value="dimension">核算维度</el-radio-button>
+              <el-radio-button value="draft">底稿模板</el-radio-button>
+              <el-radio-button value="adjustment">审计调整</el-radio-button>
+              <el-radio-button value="trial-balance">试算平衡表</el-radio-button>
               <el-radio-button value="import">数据导入</el-radio-button>
             </el-radio-group>
           </div>
@@ -63,8 +75,10 @@
                   :subjects="balanceSubjects"
                   :loading="balanceLoading"
                   :parent-code="balanceFilterCode"
+                  :selected-dimension="selectedSubject?.dimension || ''"
                   @dblclick="handleBalanceDblclick"
                   @reset="handleBalanceReset"
+                  @clear-dimension="handleDimensionClear"
                 />
 
                 <JournalDetail
@@ -74,9 +88,26 @@
                   @view-voucher="handleViewVoucher"
                 />
 
+                <VoucherBook
+                  v-else-if="activeTab === 'voucher-book'"
+                  @view-voucher="handleViewVoucher"
+                />
+
                 <DimensionPanel
                   v-else-if="activeTab === 'dimension'"
                   :selected-subject="selectedSubject"
+                />
+
+                <DraftTemplate
+                  v-else-if="activeTab === 'draft'"
+                />
+
+                <AdjustmentPanel
+                  v-else-if="activeTab === 'adjustment'"
+                />
+
+                <TrialBalance
+                  v-else-if="activeTab === 'trial-balance'"
                 />
 
                 <div v-else class="import-container">
@@ -123,12 +154,43 @@
     </el-dialog>
 
     <SettingsDialog v-model:visible="settingsVisible" />
+
+    <el-dialog v-model="searchVisible" title="全局搜索" width="500px" top="15vh" class="search-dialog" :show-close="true">
+      <el-input
+        ref="searchInputRef"
+        v-model="searchQuery"
+        placeholder="搜索科目编码、名称..."
+        size="large"
+        clearable
+        :prefix-icon="Search"
+        autofocus
+        @keyup.enter="handleSearchSelect"
+      />
+      <div class="search-results" v-if="searchResults.length > 0">
+        <div
+          v-for="item in searchResults"
+          :key="item.code"
+          class="search-item"
+          @click="handleSearchItemClick(item)"
+        >
+          <span class="search-name">{{ item.name }}</span>
+          <span class="search-code">{{ item.code }}</span>
+        </div>
+      </div>
+      <div class="search-empty" v-else-if="searchQuery && !searchLoading">
+        未找到匹配科目
+      </div>
+      <div class="search-hint" v-if="!searchQuery">
+        输入科目编码或名称进行搜索
+      </div>
+    </el-dialog>
   </el-container>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import SubjectTree from './components/SubjectTree.vue'
 import BalanceSheet from './components/BalanceSheet.vue'
 import JournalDetail from './components/JournalDetail.vue'
@@ -136,16 +198,27 @@ import DimensionPanel from './components/DimensionPanel.vue'
 import ImportPanel from './components/ImportPanel.vue'
 import BookManager from './components/BookManager.vue'
 import VoucherView from './components/VoucherView.vue'
+import VoucherBook from './components/VoucherBook.vue'
+import DraftTemplate from './components/DraftTemplate.vue'
+import AdjustmentPanel from './components/AdjustmentPanel.vue'
+import TrialBalance from './components/TrialBalance.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import {
   getSubjectTree, getAllSubjects, getStatistics,
   uploadBalance, uploadJournal, clearAllData,
   getActiveBook, setCurrentBook, getCurrentBook,
   exportBalanceDraft, downloadBalanceTemplate,
-  switchBook, saveToDatabase,
+  switchBook, saveToDatabase, searchSubjects,
 } from './api/index.js'
+import { addRecentItem, getRecentItems } from './utils/history.js'
 
 const activeTab = ref('balance')
+
+watch(activeTab, (tab) => {
+  if (tab === 'balance' && balanceSubjects.value.length === 0) {
+    loadBalanceSubjects()
+  }
+})
 
 const subjectTree = ref([])
 const treeLoading = ref(false)
@@ -177,8 +250,67 @@ const currentVoucherNo = ref('')
 const currentVoucherPeriod = ref('')
 
 const settingsVisible = ref(false)
+const searchVisible = ref(false)
+const searchQuery = ref('')
+const searchResults = ref([])
+const searchLoading = ref(false)
+const searchInputRef = ref(null)
 
 const journalRef = ref(null)
+
+function handleGlobalKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault()
+    searchVisible.value = true
+    searchQuery.value = ''
+    searchResults.value = []
+    nextTick(() => searchInputRef.value?.focus())
+  }
+  if (e.key === 'Escape') {
+    if (searchVisible.value) {
+      searchVisible.value = false
+    } else if (voucherVisible.value) {
+      voucherVisible.value = false
+    }
+  }
+}
+
+let searchTimer = null
+
+async function performSearch() {
+  if (!searchQuery.value) {
+    searchResults.value = []
+    return
+  }
+  searchLoading.value = true
+  try {
+    const data = await searchSubjects(searchQuery.value)
+    searchResults.value = (data.subjects || data || []).slice(0, 20)
+  } catch {
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+watch(searchQuery, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(performSearch, 300)
+})
+
+function handleSearchSelect() {
+  if (searchResults.value.length > 0) {
+    handleSearchItemClick(searchResults.value[0])
+  }
+}
+
+function handleSearchItemClick(item) {
+  selectedSubject.value = { code: item.code, name: item.name }
+  balanceFilterCode.value = item.code
+  addRecentItem({ type: 'subject', code: item.code, name: item.name })
+  searchVisible.value = false
+  activeTab.value = 'journal'
+}
 
 function openBookManager(type) {
   bookDialogType.value = type
@@ -186,7 +318,10 @@ function openBookManager(type) {
 }
 
 async function loadAllData() {
-  await Promise.all([loadSubjectTree(), loadBalanceSubjects(), loadStats()])
+  await Promise.all([loadSubjectTree(), loadStats()])
+  if (activeTab.value === 'balance') {
+    await loadBalanceSubjects()
+  }
 }
 
 async function loadSubjectTree() {
@@ -213,8 +348,15 @@ async function loadStats() {
 }
 
 function handleSubjectSelect(subject) {
-  selectedSubject.value = { code: subject.code, name: subject.name }
-  balanceFilterCode.value = subject.code
+  if (subject.is_dimension) {
+    // 维度节点：提取科目编码部分（code 格式为 "科目编码:维度类型:维度值"）
+    const subjectCode = subject.code.split(':')[0]
+    selectedSubject.value = { code: subjectCode, name: subject.name, dimension: subject.dimension }
+    balanceFilterCode.value = subjectCode
+  } else {
+    selectedSubject.value = { code: subject.code, name: subject.name }
+    balanceFilterCode.value = subject.code
+  }
 }
 
 function handleBalanceReset() {
@@ -222,13 +364,26 @@ function handleBalanceReset() {
 }
 
 function handleSubjectDblclick(subject) {
-  selectedSubject.value = { code: subject.code, name: subject.name }
+  if (subject.is_dimension) {
+    const subjectCode = subject.code.split(':')[0]
+    selectedSubject.value = { code: subjectCode, name: subject.name, dimension: subject.dimension }
+    addRecentItem({ type: 'subject', code: subjectCode, name: subject.name })
+  } else {
+    selectedSubject.value = { code: subject.code, name: subject.name }
+    addRecentItem({ type: 'subject', code: subject.code, name: subject.name })
+  }
   activeTab.value = 'journal'
 }
 
 function handleBalanceDblclick(row) {
   selectedSubject.value = { code: row.code, name: row.name }
   activeTab.value = 'journal'
+}
+
+function handleDimensionClear() {
+  if (selectedSubject.value) {
+    selectedSubject.value = { code: selectedSubject.value.code, name: selectedSubject.value.name }
+  }
 }
 
 function handleViewVoucher({ voucherNo, period }) {
@@ -382,6 +537,7 @@ async function handleExport() {
 }
 
 onMounted(async () => {
+  document.addEventListener('keydown', handleGlobalKeydown)
   try {
     const active = await getActiveBook()
     if (active && active.name) {
@@ -391,6 +547,10 @@ onMounted(async () => {
   } catch {}
 
   await loadAllData()
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
@@ -609,5 +769,52 @@ html, body, #app {
 
 .voucher-tooltip {
   max-width: 400px;
+}
+
+.shortcut-hint {
+  font-size: 10px;
+  color: #909399;
+  margin-left: 4px;
+  padding: 1px 4px;
+  background: #f0f2f5;
+  border-radius: 3px;
+}
+
+.search-results {
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.search-item:hover {
+  background: #f5f7fa;
+}
+
+.search-name {
+  font-size: 14px;
+  color: #303133;
+}
+
+.search-code {
+  font-size: 12px;
+  color: #909399;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+.search-empty, .search-hint {
+  text-align: center;
+  padding: 32px 0;
+  color: #c0c4cc;
+  font-size: 13px;
 }
 </style>

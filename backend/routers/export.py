@@ -1,11 +1,11 @@
-from fastapi import APIRouter
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 from io import BytesIO
 import openpyxl
 from urllib.parse import quote
-from backend.database import async_session_factory
+from backend.database import async_session_factory, escape_like
 from backend.models import BalanceSubject
-from sqlalchemy import select, text
+from sqlalchemy import select, func
 
 router = APIRouter(prefix="/api", tags=["模板下载与底稿导出"])
 
@@ -17,7 +17,6 @@ def _download_excel(stream, filename):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded}",
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
     )
 
@@ -54,39 +53,47 @@ async def download_journal_template():
 
 @router.get("/export/draft")
 async def export_balance_to_draft(
-    book_name: str = "default",
-    code_prefix: str = "",
-    level: int = 0,
+    book_name: str = Query("default"),
+    code_prefix: str = Query(""),
+    level: int = Query(0),
 ):
     async with async_session_factory() as session:
-        filters = ["book_name = :bn"]
-        params = {"bn": book_name}
+        query = select(
+            BalanceSubject.code, BalanceSubject.name,
+            BalanceSubject.year_start_debit, BalanceSubject.year_start_credit,
+            BalanceSubject.period_debit, BalanceSubject.period_credit,
+            BalanceSubject.year_total_debit, BalanceSubject.year_total_credit,
+            BalanceSubject.end_debit, BalanceSubject.end_credit,
+            BalanceSubject.dimension,
+        ).where(BalanceSubject.book_name == book_name)
 
         if code_prefix:
-            filters.append("code LIKE :cp")
-            params["cp"] = f"{code_prefix}%"
+            query = query.where(BalanceSubject.code.like(f"{escape_like(code_prefix)}%", escape="/"))
 
         if level > 0:
-            dots = "." * level
-            filters.append(f"code LIKE :dots_pat")
-            filters.append(f"code NOT LIKE :dots_sub_pat")
-            params["dots_pat"] = f"%{dots}%"
-            params["dots_sub_pat"] = f"%{dots}.%"
+            # level=1 表示1级科目（无点号），level=2 表示2级科目（1个点号），以此类推
+            target_dots = level - 1
+            if target_dots == 0:
+                query = query.where(
+                    ~BalanceSubject.code.like("%.%"),
+                )
+            else:
+                dot_pattern = "." * target_dots
+                query = query.where(
+                    BalanceSubject.code.like(f"%{dot_pattern}%"),
+                    ~BalanceSubject.code.like(f"%{dot_pattern}.%"),
+                )
 
-        where_clause = " AND ".join(filters)
-        result = await session.execute(
-            text(f"SELECT code, name, year_start_debit, year_start_credit, "
-                 f"period_debit, period_credit, end_debit, end_credit, dimension "
-                 f"FROM balance_subjects WHERE {where_clause} ORDER BY code"),
-            params
-        )
+        query = query.order_by(BalanceSubject.code)
+        result = await session.execute(query)
         subjects = result.all()
 
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "科目余额表"
     ws.append(["科目编码", "科目名称", "年初借方", "年初贷方",
-                "本期借方", "本期贷方", "期末借方", "期末贷方", "核算维度"])
+                "本期借方", "本期贷方", "本年累计借方", "本年累计贷方",
+                "期末借方", "期末贷方", "核算维度"])
 
     for s in subjects:
         ws.append(list(s))

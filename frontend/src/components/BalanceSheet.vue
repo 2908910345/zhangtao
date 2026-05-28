@@ -6,7 +6,19 @@
     </div>
 
     <template v-else>
-      <div class="filter-info" v-if="parentInfo">
+      <div class="filter-info" v-if="selectedDimension && parentInfo">
+        <el-icon style="color:#e6a23c"><PriceTag /></el-icon>
+        当前科目：<strong>{{ parentInfo.name }}</strong>
+        <span class="parent-code">{{ parentInfo.code }}</span>
+        <el-tag size="small" type="warning" style="margin-left:4px">{{ selectedDimension }}</el-tag>
+        <el-button size="small" text @click="handleDimensionClear" style="margin-left:8px">
+          <el-icon><Back /></el-icon> 返回科目
+        </el-button>
+        <el-button size="small" type="primary" plain @click="exportBalance" style="margin-left:auto">
+          <el-icon><Download /></el-icon> 导出Excel
+        </el-button>
+      </div>
+      <div class="filter-info" v-else-if="parentInfo">
         当前科目：<strong>{{ parentInfo.name }}</strong>
         <span class="parent-code">{{ parentInfo.code }}</span>
         <el-button size="small" text @click="$emit('reset')" style="margin-left:8px">
@@ -23,8 +35,67 @@
         </el-button>
       </div>
 
+      <!-- 维度明细视图 -->
+      <template v-if="selectedDimension && dimensionRows.length > 0">
+        <el-table
+          :data="dimensionRows"
+          stripe
+          size="small"
+          :row-class-name="tableRowClassName"
+          max-height="calc(100vh - 300px)"
+          style="width: 100%"
+          highlight-current-row
+          table-layout="auto"
+        >
+          <el-table-column prop="code" label="科目编码" width="150" />
+          <el-table-column prop="name" label="科目名称" min-width="160" show-overflow-tooltip />
+          <el-table-column label="期初金额" align="center">
+            <el-table-column label="借方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.ysd" class="amount">{{ row._fmt.ysd }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="贷方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.ysc" class="amount credit">{{ row._fmt.ysc }}</span>
+              </template>
+            </el-table-column>
+          </el-table-column>
+          <el-table-column label="本期发生额" align="center">
+            <el-table-column label="借方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.pd" class="amount">{{ row._fmt.pd }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="贷方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.pc" class="amount credit">{{ row._fmt.pc }}</span>
+              </template>
+            </el-table-column>
+          </el-table-column>
+          <el-table-column label="期末金额" align="center">
+            <el-table-column label="借方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.ed" class="amount">{{ row._fmt.ed }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="贷方" width="130" align="right">
+              <template #default="{ row }">
+                <span v-if="row._fmt.ec" class="amount credit">{{ row._fmt.ec }}</span>
+              </template>
+            </el-table-column>
+          </el-table-column>
+          <el-table-column label="核算维度" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="dimension-cell">{{ row.dimension }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+
+      <!-- 科目余额视图 -->
       <el-table
-        v-if="displaySubjects.length > 0"
+        v-else-if="displaySubjects.length > 0"
         :data="displaySubjects"
         stripe
         size="small"
@@ -82,7 +153,7 @@
         </el-table-column>
       </el-table>
 
-      <div v-else class="empty-state" style="padding: 32px">
+      <div v-else-if="!selectedDimension" class="empty-state" style="padding: 32px">
         <p>该科目下暂无下级科目</p>
       </div>
     </template>
@@ -90,22 +161,22 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { Back } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { Back, PriceTag } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
 import { useSettings } from '../utils/settings.js'
 import { exportToExcel } from '../utils/export.js'
 
 const { settings } = useSettings()
-const tableRef = ref(null)
 
 const props = defineProps({
   subjects: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
   parentCode: { type: String, default: '' },
+  selectedDimension: { type: String, default: '' },
 })
 
-const emit = defineEmits(['dblclick', 'reset'])
+const emit = defineEmits(['dblclick', 'reset', 'clear-dimension'])
 
 const fmt = (v) => v ? formatAmount(v) : ''
 
@@ -156,6 +227,53 @@ const parentInfo = computed(() => {
   return props.subjects.find(s => s.code === props.parentCode) || null
 })
 
+// 维度明细：直接从 subjects 中筛选带该维度值的行
+const dimensionRows = computed(() => {
+  if (!props.parentCode || !props.selectedDimension) return []
+  const all = props.subjects
+  if (!all) return []
+  const dimStr = props.selectedDimension // e.g. "银行账户:城服科技建行金融中心支行一般户"
+  const rows = []
+  for (const s of all) {
+    if (s.code === props.parentCode && s.dimension && s.dimension.includes(dimStr)) {
+      rows.push(formatRow(s))
+    }
+  }
+  // 添加合计行
+  if (rows.length > 0) {
+    const total = {
+      name: '合计',
+      year_start_debit: 0, year_start_credit: 0,
+      period_debit: 0, period_credit: 0,
+      year_total_debit: 0, year_total_credit: 0,
+      end_debit: 0, end_credit: 0,
+      _isTotal: true,
+    }
+    for (const r of rows) {
+      total.year_start_debit += r.year_start_debit || 0
+      total.year_start_credit += r.year_start_credit || 0
+      total.period_debit += r.period_debit || 0
+      total.period_credit += r.period_credit || 0
+      total.end_debit += r.end_debit || 0
+      total.end_credit += r.end_credit || 0
+    }
+    total._fmt = {
+      ysd: fmt(total.year_start_debit),
+      ysc: fmt(total.year_start_credit),
+      pd: fmt(total.period_debit),
+      pc: fmt(total.period_credit),
+      ed: fmt(total.end_debit),
+      ec: fmt(total.end_credit),
+    }
+    rows.push(total)
+  }
+  return rows
+})
+
+function handleDimensionClear() {
+  emit('clear-dimension')
+}
+
 const codeFilters = computed(() => {
   const values = [...new Set(displaySubjects.value.map(r => r.code).filter(Boolean))]
   return values.map(v => ({ text: v, value: v }))
@@ -204,6 +322,7 @@ async function exportBalance() {
 }
 
 function tableRowClassName({ row }) {
+  if (row._isTotal) return 'row-parent'
   if (row.code === props.parentCode) return 'row-parent'
   if (!row.code.includes('.')) return 'row-level-1'
   return ''

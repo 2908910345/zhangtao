@@ -1,16 +1,18 @@
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text, and_, or_
+from sqlalchemy import select, and_, or_, func
 from typing import Optional
 import tempfile
 import os
-from backend.database import get_db, ensure_journal_table, get_existing_journal_table_name, get_journal_table, get_journal_table_name
+from backend.database import get_db, ensure_journal_table, get_existing_journal_table_name, get_journal_table, escape_like
 from backend.models import JournalEntry, BalanceSubject, Book
 from backend.schemas import (
     UploadJournalResponse,
     JournalEntryResponse,
     DimensionResponse,
     DimensionItem,
+    VoucherSummary,
+    VoucherListResponse,
 )
 from backend.services.parser import parse_journal_streaming
 
@@ -105,11 +107,10 @@ async def upload_journal(
         book = book_result.scalars().first()
         if book:
             book.voucher_count = len(voucher_set)
-            subject_cnt = await db.execute(
-                text("SELECT COUNT(id) FROM balance_subjects WHERE book_name = :bn"),
-                {"bn": book_name}
+            subject_cnt_result = await db.execute(
+                select(func.count(BalanceSubject.id)).where(BalanceSubject.book_name == book_name)
             )
-            book.subject_count = subject_cnt.scalar() or 0
+            book.subject_count = subject_cnt_result.scalar() or 0
             db.add(book)
             await db.flush()
 
@@ -130,20 +131,40 @@ async def upload_journal(
 
 
 async def _get_journal_table_for_query(book_name: str):
-    """获取用于查询的序时账 Table 对象（优先分表，回退到共享表）"""
     table_name = await get_existing_journal_table_name(book_name)
     if table_name == "journal_entries":
         return JournalEntry.__table__
     return get_journal_table(book_name)
 
 
-@router.get("/subjects/{code}/journal", response_model=list[JournalEntryResponse])
+def _serialize_entry(e, counterpart: str = '') -> dict:
+    return {
+        'id': e.id,
+        'book_name': e.book_name,
+        'created_at': e.created_at.isoformat() if e.created_at else None,
+        'org': e.org or '',
+        'period': e.period or '',
+        'voucher_no': e.voucher_no,
+        'summary': e.summary or '',
+        'subject_code': e.subject_code,
+        'subject_name': e.subject_name or '',
+        'debit': e.debit or 0.0,
+        'credit': e.credit or 0.0,
+        'dimension': e.dimension or '',
+        'counterpart': counterpart,
+    }
+
+
+@router.get("/subjects/{code}/journal")
 async def get_subject_journal(
     code: str,
     period: Optional[str] = Query(None),
     voucher_no: Optional[str] = Query(None),
     keyword: Optional[str] = Query(None, description="模糊搜索：摘要、科目编码、科目名称"),
     include_children: bool = Query(False, description="都包含子科目的序时账"),
+    with_counterpart: bool = Query(False, description="是否计算对方科目（较慢）"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(500, ge=1, le=5000),
     book_name: str = Query("default"),
     db: AsyncSession = Depends(get_db)
 ):
@@ -154,7 +175,7 @@ async def get_subject_journal(
         children = await db.execute(
             select(BalanceSubject.code).distinct().where(
                 BalanceSubject.book_name == book_name,
-                BalanceSubject.code.like(f"{code}.%")
+                BalanceSubject.code.like(f"{escape_like(code)}.%", escape="/")
             )
         )
         child_codes = [row[0] for row in children]
@@ -169,83 +190,77 @@ async def get_subject_journal(
     if period:
         conditions.append(tc.period == period)
     if voucher_no:
-        conditions.append(tc.voucher_no.like(f"%{voucher_no}%"))
+        conditions.append(tc.voucher_no.like(f"%{escape_like(voucher_no)}%", escape="/"))
     if keyword:
         conditions.append(
             or_(
-                tc.summary.like(f"%{keyword}%"),
-                tc.subject_code.like(f"%{keyword}%"),
-                tc.subject_name.like(f"%{keyword}%"),
+                tc.summary.like(f"%{escape_like(keyword)}%", escape="/"),
+                tc.subject_code.like(f"%{escape_like(keyword)}%", escape="/"),
+                tc.subject_name.like(f"%{escape_like(keyword)}%", escape="/"),
             )
         )
 
+    count_result = await db.execute(
+        select(func.count(tc.id)).where(and_(*conditions))
+    )
+    total = count_result.scalar() or 0
+
+    offset = (page - 1) * page_size
     result = await db.execute(
         select(table)
         .where(and_(*conditions))
         .order_by(tc.period, tc.voucher_no)
+        .offset(offset)
+        .limit(page_size)
     )
     entries = result.all()
 
     if not entries:
-        return []
-
-    voucher_pairs = {(e.period, e.voucher_no) for e in entries}
-
-    voucher_conditions = [
-        and_(
-            tc.book_name == book_name,
-            tc.period == p,
-            tc.voucher_no == v
-        )
-        for p, v in voucher_pairs
-    ]
-    all_result = await db.execute(
-        select(table)
-        .where(or_(*voucher_conditions))
-    )
-    all_entries = all_result.all()
-
-    groups = {}
-    for e in all_entries:
-        key = (e.period, e.voucher_no, e.summary or '')
-        if key not in groups:
-            groups[key] = []
-        groups[key].append(e)
+        return {"entries": [], "total": total, "page": page, "page_size": page_size}
 
     counterpart_map = {}
-    for key, group in groups.items():
-        seen = {}
-        for e in group:
-            if e.subject_code not in seen:
-                seen[e.subject_code] = e.subject_name or ''
-        for e in group:
-            others = []
-            for sc, sn in seen.items():
-                if sc != e.subject_code:
-                    others.append(f"{sn}({sc})" if sc else sn)
-            map_key = (e.period, e.voucher_no, e.subject_code, e.summary or '')
-            counterpart_map[map_key] = '；'.join(dict.fromkeys(others))
+    if with_counterpart and entries:
+        voucher_pairs = {(e.period, e.voucher_no) for e in entries}
+        voucher_conditions = [
+            and_(
+                tc.book_name == book_name,
+                tc.period == p,
+                tc.voucher_no == v
+            )
+            for p, v in voucher_pairs
+        ]
+        all_result = await db.execute(
+            select(table)
+            .where(or_(*voucher_conditions))
+        )
+        all_entries = all_result.all()
+
+        groups = {}
+        for e in all_entries:
+            key = (e.period, e.voucher_no, e.summary or '')
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(e)
+
+        for key, group in groups.items():
+            seen = {}
+            for e in group:
+                if e.subject_code not in seen:
+                    seen[e.subject_code] = e.subject_name or ''
+            for e in group:
+                others = []
+                for sc, sn in seen.items():
+                    if sc != e.subject_code:
+                        others.append(f"{sn}({sc})" if sc else sn)
+                map_key = (e.period, e.voucher_no, e.subject_code, e.summary or '')
+                counterpart_map[map_key] = '；'.join(dict.fromkeys(others))
 
     result_list = []
     for e in entries:
         map_key = (e.period, e.voucher_no, e.subject_code, e.summary or '')
-        result_list.append({
-            'id': e.id,
-            'book_name': e.book_name,
-            'created_at': e.created_at.isoformat() if e.created_at else None,
-            'org': e.org or '',
-            'period': e.period or '',
-            'voucher_no': e.voucher_no,
-            'summary': e.summary or '',
-            'subject_code': e.subject_code,
-            'subject_name': e.subject_name or '',
-            'debit': e.debit or 0.0,
-            'credit': e.credit or 0.0,
-            'dimension': e.dimension or '',
-            'counterpart': counterpart_map.get(map_key, ''),
-        })
+        result_list.append(_serialize_entry(e, counterpart_map.get(map_key, '')))
 
-    return result_list
+    return {"entries": result_list, "total": total, "page": page, "page_size": page_size}
 
 
 @router.get("/voucher/{voucher_no}", response_model=list[JournalEntryResponse])
@@ -268,24 +283,72 @@ async def get_voucher_detail(
         select(table).where(*conditions).order_by(tc.id)
     )
     entries = result.all()
-    return [
-        {
-            'id': e.id,
-            'book_name': e.book_name,
-            'created_at': e.created_at.isoformat() if e.created_at else None,
-            'org': e.org or '',
-            'period': e.period or '',
-            'voucher_no': e.voucher_no,
-            'summary': e.summary or '',
-            'subject_code': e.subject_code,
-            'subject_name': e.subject_name or '',
-            'debit': e.debit or 0.0,
-            'credit': e.credit or 0.0,
-            'dimension': e.dimension or '',
-            'counterpart': '',
-        }
-        for e in entries
+    return [_serialize_entry(e) for e in entries]
+
+
+@router.get("/vouchers", response_model=VoucherListResponse)
+async def get_voucher_book(
+    period: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    book_name: str = Query("default"),
+    db: AsyncSession = Depends(get_db)
+):
+    table = await _get_journal_table_for_query(book_name)
+    tc = table.c
+
+    conditions = [tc.book_name == book_name]
+    if period:
+        conditions.append(tc.period == period)
+
+    subq = select(
+        tc.voucher_no,
+        tc.period,
+        func.count(tc.id).label('entry_count'),
+        func.sum(tc.debit).label('total_debit'),
+        func.sum(tc.credit).label('total_credit'),
+        func.min(tc.summary).label('first_summary'),
+    ).where(and_(*conditions))
+
+    if keyword:
+        subq = subq.where(
+            or_(
+                tc.voucher_no.like(f"%{escape_like(keyword)}%", escape="/"),
+                tc.summary.like(f"%{escape_like(keyword)}%", escape="/"),
+            )
+        )
+
+    subq = subq.group_by(tc.voucher_no, tc.period).order_by(tc.period, tc.voucher_no)
+    subq = subq.subquery()
+
+    count_result = await db.execute(select(func.count()).select_from(subq))
+    total = count_result.scalar() or 0
+
+    offset = (page - 1) * page_size
+    result = await db.execute(
+        select(subq).offset(offset).limit(page_size)
+    )
+    rows = result.all()
+
+    vouchers = [
+        VoucherSummary(
+            voucher_no=row.voucher_no,
+            period=row.period or '',
+            entry_count=row.entry_count or 0,
+            total_debit=float(row.total_debit or 0),
+            total_credit=float(row.total_credit or 0),
+            first_summary=row.first_summary or '',
+        )
+        for row in rows
     ]
+
+    return VoucherListResponse(
+        vouchers=vouchers,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 def _parse_dimensions(dim_str):
@@ -365,26 +428,9 @@ async def get_journal_by_dimension(
             and_(
                 tc.book_name == book_name,
                 tc.subject_code == code,
-                tc.dimension.like(f"%{dim_type}%:%{dim_value}%")
+                tc.dimension.like(f"%{escape_like(dim_type)}%:{escape_like(dim_value)}%", escape="/")
             )
         ).order_by(tc.period, tc.voucher_no)
     )
     entries = result.all()
-    return [
-        {
-            'id': e.id,
-            'book_name': e.book_name,
-            'created_at': e.created_at.isoformat() if e.created_at else None,
-            'org': e.org or '',
-            'period': e.period or '',
-            'voucher_no': e.voucher_no,
-            'summary': e.summary or '',
-            'subject_code': e.subject_code,
-            'subject_name': e.subject_name or '',
-            'debit': e.debit or 0.0,
-            'credit': e.credit or 0.0,
-            'dimension': e.dimension or '',
-            'counterpart': '',
-        }
-        for e in entries
-    ]
+    return [_serialize_entry(e) for e in entries]

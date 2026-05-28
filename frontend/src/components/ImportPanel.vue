@@ -30,7 +30,7 @@
                 <component :is="balanceStatus.pending ? 'Clock' : 'CircleCheck'" />
               </el-icon>
               <p v-if="balanceStatus.pending">
-                已选择文件：<strong>{{ balanceStatus.count }}</strong> 条科目（待保存）
+                已选择文件：<strong>{{ balanceStatus.count > 0 ? balanceStatus.count + ' 条科目' : '等待保存到数据库' }}</strong>
               </p>
               <p v-else>
                 已保存到数据库 <strong>{{ balanceStatus.count }}</strong> 条科目
@@ -71,7 +71,7 @@
                 <component :is="journalStatus.pending ? 'Clock' : 'CircleCheck'" />
               </el-icon>
               <p v-if="journalStatus.pending">
-                已选择文件：<strong>{{ journalStatus.count }}</strong> 行分录（待保存）
+                已选择文件：<strong>{{ journalStatus.count > 0 ? journalStatus.count + ' 行分录' : '等待保存到数据库' }}</strong>
               </p>
               <p v-else>
                 已保存到数据库 <strong>{{ journalStatus.count }}</strong> 行分录
@@ -151,10 +151,10 @@ function processFile(file, type) {
 }
 
 function clearBalance() {
-  emit('update:balance-status', { imported: false, count: 0, time: '' })
+  emit('update:balance-status', { imported: false, count: 0, time: '', pending: false })
 }
 function clearJournal() {
-  emit('update:journal-status', { imported: false, count: 0, time: '', subject_count: 0, voucher_count: 0 })
+  emit('update:journal-status', { imported: false, count: 0, time: '', subject_count: 0, voucher_count: 0, pending: false })
 }
 
 async function downloadTemplate(type) {

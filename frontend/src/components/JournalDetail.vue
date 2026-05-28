@@ -22,8 +22,8 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          <el-button size="small" @click="loadData(selectedSubject)">查询</el-button>
-          <span class="total-hint">共 {{ journalData.length }} 行</span>
+          <el-button size="small" @click="loadData(1)">查询</el-button>
+          <span class="total-hint">共 {{ totalRows }} 行</span>
           <el-button size="small" type="primary" plain @click="exportJournal">
             <el-icon><Download /></el-icon> 导出Excel
           </el-button>
@@ -39,7 +39,7 @@
         max-height="calc(100vh - 340px)"
         style="width: 100%"
       >
-        <el-table-column prop="period" label="期间" width="110" :filters="periodFilters" :filter-method="filterPeriodColumn" />
+        <el-table-column prop="period" label="期间" width="110" />
         <el-table-column prop="voucher_no" label="凭证号" width="100">
           <template #default="{ row }">
             <el-link type="primary" :underline="false" @click="viewVoucher(row)">
@@ -48,8 +48,8 @@
           </template>
         </el-table-column>
         <el-table-column prop="summary" label="摘要" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="subject_code" label="科目编码" width="120" :filters="codeFilters" :filter-method="filterCodeColumn" />
-        <el-table-column prop="subject_name" label="科目名称" min-width="150" show-overflow-tooltip :filters="nameFilters" :filter-method="filterNameColumn" />
+        <el-table-column prop="subject_code" label="科目编码" width="120" />
+        <el-table-column prop="subject_name" label="科目名称" min-width="150" show-overflow-tooltip />
         <el-table-column v-if="settings.showCounterpartSubject" label="对方科目" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.counterpart || '-' }}
@@ -70,12 +70,23 @@
       <div v-else class="empty-state" style="padding: 32px">
         <p>该科目暂无序时账数据</p>
       </div>
+
+      <div class="pagination-row" v-if="totalRows > pageSize">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="totalRows"
+          layout="prev, pager, next"
+          size="small"
+          @current-change="loadData"
+        />
+      </div>
     </template>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
 import { getSubjectJournal } from '../api/index.js'
@@ -97,6 +108,9 @@ const filterVoucher = ref('')
 const filterKeyword = ref('')
 const includeChildren = ref(false)
 const tableRef = ref(null)
+const currentPage = ref(1)
+const pageSize = 500
+const totalRows = ref(0)
 
 function getLevel(code) {
   return code ? code.split('.').length : 1
@@ -104,27 +118,40 @@ function getLevel(code) {
 
 watch(() => props.selectedSubject, (subject) => {
   if (subject) {
-    loadData(subject)
+    loadData(1)
   } else {
     journalData.value = []
+    totalRows.value = 0
   }
 }, { immediate: true })
 
-async function loadData(subject) {
-  if (!subject) return
+async function loadData(page) {
+  if (!props.selectedSubject) return
+  if (page) currentPage.value = page
   loading.value = true
   try {
-    const level = getLevel(subject.code)
+    const level = getLevel(props.selectedSubject.code)
     const params = {}
     if (filterPeriod.value) params.period = filterPeriod.value
     if (filterVoucher.value) params.voucher_no = filterVoucher.value
     if (filterKeyword.value) params.keyword = filterKeyword.value
     params.include_children = level === 1
+    params.with_counterpart = settings.showCounterpartSubject
+    params.page = currentPage.value
+    params.page_size = pageSize
     includeChildren.value = level === 1
 
-    journalData.value = await getSubjectJournal(subject.code, params)
+    const data = await getSubjectJournal(props.selectedSubject.code, params)
+    if (data && data.entries) {
+      journalData.value = data.entries
+      totalRows.value = data.total || 0
+    } else {
+      journalData.value = Array.isArray(data) ? data : []
+      totalRows.value = journalData.value.length
+    }
   } catch {
     journalData.value = []
+    totalRows.value = 0
   } finally {
     loading.value = false
   }
@@ -133,23 +160,6 @@ async function loadData(subject) {
 function viewVoucher(row) {
   emit('view-voucher', { voucherNo: row.voucher_no, period: row.period })
 }
-
-const periodFilters = computed(() => {
-  const values = [...new Set(journalData.value.map(r => r.period).filter(Boolean))]
-  return values.map(v => ({ text: v, value: v }))
-})
-const codeFilters = computed(() => {
-  const values = [...new Set(journalData.value.map(r => r.subject_code).filter(Boolean))]
-  return values.map(v => ({ text: v, value: v }))
-})
-const nameFilters = computed(() => {
-  const values = [...new Set(journalData.value.map(r => r.subject_name).filter(Boolean))]
-  return values.map(v => ({ text: v, value: v }))
-})
-
-function filterPeriodColumn(value, row) { return row.period === value }
-function filterCodeColumn(value, row) { return row.subject_code === value }
-function filterNameColumn(value, row) { return row.subject_name === value }
 
 async function exportJournal() {
   const headers = [
@@ -222,6 +232,10 @@ defineExpose({ loadData })
 .amount-credit {
   color: #e23c3c; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
   font-variant-numeric: tabular-nums;
+}
+
+.pagination-row {
+  display: flex; justify-content: center; padding: 16px 0 4px;
 }
 
 :deep(.el-table) {
