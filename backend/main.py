@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.database import init_db
-from backend.routers import balance, journal, books, export, draft, adjustments
+from backend.routers import balance, journal, books, export, draft, risk
 
 
 @asynccontextmanager
@@ -31,7 +31,8 @@ app.include_router(journal.router)
 app.include_router(books.router)
 app.include_router(export.router)
 app.include_router(draft.router)
-app.include_router(adjustments.router)
+app.include_router(risk.router)
+
 
 
 @app.get("/")

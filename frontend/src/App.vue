@@ -49,8 +49,7 @@
             <span v-else-if="activeTab === 'voucher-book'">凭证簿</span>
             <span v-else-if="activeTab === 'dimension'">核算维度</span>
             <span v-else-if="activeTab === 'draft'">底稿模板</span>
-            <span v-else-if="activeTab === 'adjustment'">审计调整</span>
-            <span v-else-if="activeTab === 'trial-balance'">试算平衡表</span>
+            <span v-else-if="activeTab === 'risk'">风险分析</span>
             <span v-else>数据导入</span>
           </div>
 
@@ -61,9 +60,8 @@
               <el-radio-button value="voucher-book">凭证簿</el-radio-button>
               <el-radio-button value="dimension">核算维度</el-radio-button>
               <el-radio-button value="draft">底稿模板</el-radio-button>
-              <el-radio-button value="adjustment">审计调整</el-radio-button>
-              <el-radio-button value="trial-balance">试算平衡表</el-radio-button>
               <el-radio-button value="import">数据导入</el-radio-button>
+              <el-radio-button value="risk">风险分析</el-radio-button>
             </el-radio-group>
           </div>
 
@@ -102,12 +100,9 @@
                   v-else-if="activeTab === 'draft'"
                 />
 
-                <AdjustmentPanel
-                  v-else-if="activeTab === 'adjustment'"
-                />
-
-                <TrialBalance
-                  v-else-if="activeTab === 'trial-balance'"
+                <RiskAnalysis
+                  v-else-if="activeTab === 'risk'"
+                  @view-voucher="handleViewVoucher"
                 />
 
                 <div v-else class="import-container">
@@ -200,8 +195,7 @@ import BookManager from './components/BookManager.vue'
 import VoucherView from './components/VoucherView.vue'
 import VoucherBook from './components/VoucherBook.vue'
 import DraftTemplate from './components/DraftTemplate.vue'
-import AdjustmentPanel from './components/AdjustmentPanel.vue'
-import TrialBalance from './components/TrialBalance.vue'
+import RiskAnalysis from './components/RiskAnalysis.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import {
   getSubjectTree, getAllSubjects, getStatistics,

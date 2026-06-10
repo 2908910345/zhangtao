@@ -33,7 +33,7 @@
         <el-table-column prop="period" label="期间" width="120" />
         <el-table-column prop="voucher_no" label="凭证号" width="120">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false">{{ row.voucher_no }}</el-link>
+            <el-link type="primary" underline="never">{{ row.voucher_no }}</el-link>
           </template>
         </el-table-column>
         <el-table-column prop="first_summary" label="首行摘要" min-width="200" show-overflow-tooltip />
@@ -110,7 +110,7 @@ async function loadData(page) {
 async function loadPeriods() {
   try {
     // 从凭证汇总接口获取带期间筛选的数据，提取期间列表
-    const data = await getVoucherBook({ page: 1, page_size: 1000 })
+    const data = await getVoucherBook({ page: 1, page_size: 200 })
     const periods = new Set()
     for (const v of data.vouchers || []) {
       if (v.period) periods.add(v.period)

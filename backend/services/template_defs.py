@@ -13,12 +13,9 @@
 - 数据行 code 与 label 一致，作为模板内部标识符
 """
 
-# 通用列定义
+# 通用列定义（精简版，仅保留金额列）
 STANDARD_COLUMNS = [
-    {"key": "unaudited", "label": "未审数", "source": "end_balance"},
-    {"key": "adj_debit", "label": "调整借方", "source": "adjustment_debit"},
-    {"key": "adj_credit", "label": "调整贷方", "source": "adjustment_credit"},
-    {"key": "audited", "label": "审定数", "source": "audited_balance"},
+    {"key": "amount", "label": "金额", "source": "end_balance"},
 ]
 
 # ==================== 辅助函数 ====================

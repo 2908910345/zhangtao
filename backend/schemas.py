@@ -171,52 +171,6 @@ class BookResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AdjustmentEntryCreate(BaseModel):
-    voucher_no: str = ""
-    summary: str = ""
-    subject_code: str
-    subject_name: str = ""
-    debit: float = 0.0
-    credit: float = 0.0
-
-
-class AdjustmentEntryResponse(AdjustmentEntryCreate):
-    id: int
-    book_name: str = ""
-    created_at: Optional[datetime] = None
-
-    model_config = {"from_attributes": True}
-
-
-class AdjustmentListResponse(BaseModel):
-    entries: list[AdjustmentEntryResponse] = []
-    total: int = 0
-
-
-class TrialBalanceRow(BaseModel):
-    code: str
-    name: str
-    level: int = 1
-    unaudited_debit: float = 0.0
-    unaudited_credit: float = 0.0
-    adjustment_debit: float = 0.0
-    adjustment_credit: float = 0.0
-    audited_debit: float = 0.0
-    audited_credit: float = 0.0
-    has_children: bool = False
-
-
-class TrialBalanceResponse(BaseModel):
-    rows: list[TrialBalanceRow] = []
-    total: int = 0
-    check_ok: bool = False
-
-
-class DeleteResponse(BaseModel):
-    message: str
-    deleted: int = 0
-
-
 class BookListResponse(BaseModel):
     books: list[BookResponse] = []
     current: str = "default"

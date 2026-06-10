@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, or_
 from backend.database import get_db, escape_like
-from backend.models import BalanceSubject, AdjustmentEntry
+from backend.models import BalanceSubject
 from backend.services.template_defs import DRAFT_TEMPLATES
 from backend.schemas import DetailHierarchyResponse, DetailHierarchyRow
 
@@ -248,139 +248,6 @@ async def get_template_data(
     }
 
 
-# -------------------- 调整值持久化 --------------------
-
-
-@router.get("/{template_code}/adjustments")
-async def get_template_adjustments(
-    template_code: str,
-    book_name: str = Query("default"),
-    db: AsyncSession = Depends(get_db),
-):
-    """获取某底稿模板所有科目的调整值（从 adjustment_entries 聚合）"""
-    tpl = None
-    for name, t in DRAFT_TEMPLATES.items():
-        if t["code"] == template_code:
-            tpl = t
-            break
-    if not tpl:
-        raise HTTPException(status_code=404, detail="模板不存在")
-
-    # 查询当前账套所有科目，建立名称→编码映射
-    result = await db.execute(
-        select(BalanceSubject).where(BalanceSubject.book_name == book_name)
-    )
-    all_subjects = result.scalars().all()
-    name_code_map = _build_name_code_map(all_subjects)
-
-    # 按名称收集模板涉及的所有实际科目编码
-    all_codes = set()
-    for row in tpl["rows"]:
-        code = row["code"]
-        if code and code not in ("TOTAL", "NET", "NET_1", "SUBTOTAL_1"):
-            # 尝试通过名称映射得到实际编码
-            actual_codes = _resolve_actual_codes(code, name_code_map, all_subjects)
-            all_codes.update(actual_codes)
-
-    if not all_codes:
-        return {"adjustments": {}}
-
-    result = await db.execute(
-        select(
-            AdjustmentEntry.subject_code,
-            func.coalesce(func.sum(AdjustmentEntry.debit), 0).label("total_debit"),
-            func.coalesce(func.sum(AdjustmentEntry.credit), 0).label("total_credit"),
-        ).where(
-            AdjustmentEntry.book_name == book_name,
-            AdjustmentEntry.subject_code.in_(list(all_codes)),
-        ).group_by(AdjustmentEntry.subject_code)
-    )
-    adjust_rows = result.all()
-
-    adjustments = {}
-    for code, debit, credit in adjust_rows:
-        adjustments[code] = {
-            "adj_debit": float(debit),
-            "adj_credit": float(credit),
-        }
-
-    return {"adjustments": adjustments}
-
-
-@router.put("/{template_code}/adjustments")
-async def save_template_adjustments(
-    template_code: str,
-    data: dict,
-    book_name: str = Query("default"),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    保存底稿模板的调整值。
-    body: {"adjustments": {"<科目名称或编码>": {"adj_debit": 1000, "adj_credit": 0}, ...}}
-    前端可以使用模板行 label 名称或实际科目编码，后端自动转换。
-    """
-    tpl = None
-    tpl_name = ""
-    for name, t in DRAFT_TEMPLATES.items():
-        if t["code"] == template_code:
-            tpl = t
-            tpl_name = name
-            break
-    if not tpl:
-        raise HTTPException(status_code=404, detail="模板不存在")
-
-    # 查询当前账套所有科目，建立名称→编码映射
-    result = await db.execute(
-        select(BalanceSubject).where(BalanceSubject.book_name == book_name)
-    )
-    all_subjects = result.scalars().all()
-    name_code_map = _build_name_code_map(all_subjects)
-
-    adjustments = data.get("adjustments", {})
-
-    for key, adj in adjustments.items():
-        adj_debit = float(adj.get("adj_debit", 0))
-        adj_credit = float(adj.get("adj_credit", 0))
-
-        # 将 key（可能是科目名称或编码）解析为实际一级科目编码
-        actual_codes = _resolve_actual_codes(key, name_code_map, all_subjects)
-        if not actual_codes:
-            # 如果无法解析为名称，直接作为编码使用
-            actual_codes = [key]
-
-        for subject_code in actual_codes:
-            result2 = await db.execute(
-                select(AdjustmentEntry).where(
-                    AdjustmentEntry.book_name == book_name,
-                    AdjustmentEntry.subject_code == subject_code,
-                    AdjustmentEntry.summary == f"[底稿]{tpl_name}",
-                )
-            )
-            existing = result2.scalars().first()
-
-            if existing:
-                if adj_debit == 0 and adj_credit == 0:
-                    await db.delete(existing)
-                else:
-                    existing.debit = adj_debit
-                    existing.credit = adj_credit
-            else:
-                if adj_debit != 0 or adj_credit != 0:
-                    entry = AdjustmentEntry(
-                        book_name=book_name,
-                        voucher_no="",
-                        summary=f"[底稿]{tpl_name}",
-                        subject_code=subject_code,
-                        subject_name="",
-                        debit=adj_debit,
-                        credit=adj_credit,
-                    )
-                    db.add(entry)
-
-    await db.commit()
-    return {"ok": True}
-
-
 # -------------------- 科目数据工具函数 --------------------
 
 
@@ -507,27 +374,6 @@ def _find_subject_by_name(name_code_map, subject_map, name):
         "dimension": "",
         "dim_rows": [],
     }
-
-
-def _resolve_actual_codes(key, name_code_map, all_subjects):
-    """将模板中的 key（可能是科目名称或编码）解析为实际一级科目编码列表。
-    优先按名称查找，失败则作为编码使用。"""
-    # 尝试作为名称匹配
-    l1_code = name_code_map.get(key)
-    if l1_code:
-        return [l1_code]
-
-    # 如果 key 本身就是实际编码，直接返回
-    for s in all_subjects:
-        if s.code.split('.')[0] == key:
-            return [key]
-
-    # 尝试模糊匹配（key 是名称的子串）
-    for name, code in name_code_map.items():
-        if key in name or name in key:
-            return [code]
-
-    return []
 
 
 # -------------------- 明细表 --------------------

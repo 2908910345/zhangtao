@@ -42,7 +42,7 @@
         <el-table-column prop="period" label="期间" width="110" />
         <el-table-column prop="voucher_no" label="凭证号" width="100">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="viewVoucher(row)">
+            <el-link type="primary" underline="never" @click="viewVoucher(row)">
               {{ row.voucher_no }}
             </el-link>
           </template>

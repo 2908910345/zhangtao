@@ -1,7 +1,7 @@
 import re
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Table, Column, Integer, String, Numeric, DateTime, MetaData, func
+from sqlalchemy import Table, Column, Integer, String, Numeric, DateTime, MetaData, func, Index
 from sqlalchemy import inspect
 from pydantic_settings import BaseSettings
 import os
@@ -104,6 +104,8 @@ def _build_journal_table(table_name: str) -> Table:
         Column('credit', Numeric(18, 2), default=0.0),
         Column('dimension', String(500), default=''),
         Column('created_at', DateTime, server_default=func.now()),
+        Index(f'ix_{table_name}_debit', 'book_name', 'debit'),
+        Index(f'ix_{table_name}_credit', 'book_name', 'credit'),
         extend_existing=True,
     )
 

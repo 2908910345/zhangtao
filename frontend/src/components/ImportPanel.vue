@@ -4,7 +4,7 @@
       <div class="import-card">
         <div class="card-header">
             <span>科目余额表</span>
-            <el-link type="primary" :underline="false" class="tpl-link" @click="downloadTemplate('balance')">
+            <el-link type="primary" underline="never" class="tpl-link" @click="downloadTemplate('balance')">
               <el-icon><Download /></el-icon> 下载模板
             </el-link>
           </div>
@@ -45,7 +45,7 @@
       <div class="import-card">
         <div class="card-header">
             <span>序时账（凭证）</span>
-            <el-link type="primary" :underline="false" class="tpl-link" @click="downloadTemplate('journal')">
+            <el-link type="primary" underline="never" class="tpl-link" @click="downloadTemplate('journal')">
               <el-icon><Download /></el-icon> 下载模板
             </el-link>
           </div>

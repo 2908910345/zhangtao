@@ -34,21 +34,6 @@ class BalanceSubject(Base):
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
 
 
-class AdjustmentEntry(Base):
-    __tablename__ = "adjustment_entries"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    book_name = Column(String(200), default="default", nullable=False, index=True, comment="所属账套")
-    voucher_no = Column(String(50), default="", comment="调整凭证号，如 T1")
-    summary = Column(String(500), default="", comment="调整摘要说明")
-    subject_code = Column(String(50), nullable=False, index=True, comment="科目编码")
-    subject_name = Column(String(200), default="", comment="科目名称")
-    debit = Column(Numeric(18, 2), default=0.0, comment="借方金额")
-    credit = Column(Numeric(18, 2), default=0.0, comment="贷方金额")
-    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="修改时间")
-
-
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
 

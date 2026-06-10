@@ -78,81 +78,13 @@
         </el-button>
         <h3>{{ templateData.name }}</h3>
         <el-tag size="small" :type="categoryTagType">{{ templateData.category }}</el-tag>
-        <div class="header-tabs">
-          <el-radio-group v-model="subTab" size="small">
-            <el-radio-button value="audit">审定表</el-radio-button>
-            <el-radio-button value="detail">明细表</el-radio-button>
-          </el-radio-group>
-        </div>
         <el-button size="small" type="primary" @click="handleExport">
           <el-icon><Download /></el-icon> 导出
         </el-button>
-        <el-tag v-if="adjustmentSaved" type="success" size="small" class="save-tag">已保存</el-tag>
-        <el-tag v-else-if="adjustmentDirty" type="warning" size="small" class="save-tag">未保存</el-tag>
-      </div>
-
-      <!-- 审定表 -->
-      <div v-show="subTab === 'audit'">
-        <table class="draft-table" v-if="templateData.rows">
-          <thead>
-            <tr>
-              <th class="col-label">项目</th>
-              <th v-for="col in templateData.columns" :key="col.key" class="col-value">
-                {{ col.label }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="(row, idx) in templateData.rows" :key="idx">
-              <tr :class="rowClass(row)">
-                <td class="col-label">
-                  <span :class="labelClass(row)">{{ row.label }}</span>
-                </td>
-                <td v-for="col in templateData.columns" :key="col.key" class="col-value">
-                  <!-- 未审数：使用后端计算值 -->
-                  <template v-if="col.source === 'end_balance'">
-                    {{ formatAmount(row.values.unaudited || 0) }}
-                  </template>
-                  <!-- 调整借方/贷方：可编辑输入框 -->
-                  <template v-else-if="col.source === 'adjustment_debit'">
-                    <el-input-number
-                      v-if="!row.is_total && !row.is_net"
-                      v-model="adjustments[row.code].adj_debit"
-                      size="small"
-                      :controls="false"
-                      :precision="2"
-                      :min="0"
-                      @change="onAdjustmentChange"
-                      class="adj-input"
-                    />
-                    <span v-else class="computed-value">—</span>
-                  </template>
-                  <template v-else-if="col.source === 'adjustment_credit'">
-                    <el-input-number
-                      v-if="!row.is_total && !row.is_net"
-                      v-model="adjustments[row.code].adj_credit"
-                      size="small"
-                      :controls="false"
-                      :precision="2"
-                      :min="0"
-                      @change="onAdjustmentChange"
-                      class="adj-input"
-                    />
-                    <span v-else class="computed-value">—</span>
-                  </template>
-                  <!-- 审定数：动态计算 -->
-                  <template v-else-if="col.source === 'audited_balance'">
-                    <span class="computed-value">{{ formatAmount(row.values.audited || 0) }}</span>
-                  </template>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
       </div>
 
       <!-- 明细表：层级结构 -->
-      <div v-show="subTab === 'detail'" v-loading="hierarchyLoading">
+      <div v-loading="hierarchyLoading">
         <template v-if="hierarchyData && hierarchyData.rows && hierarchyData.rows.length > 0">
           <div class="detail-header">
             <h4>{{ hierarchyData.template_name }} · 明细表</h4>
@@ -217,10 +149,10 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ArrowLeft, Download } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
-import { listDraftTemplates, getDraftTemplate, getTemplateAdjustments, saveTemplateAdjustments, getDetailHierarchy } from '../api/index.js'
+import { listDraftTemplates, getDraftTemplate, getDetailHierarchy } from '../api/index.js'
 import ExcelJS from 'exceljs'
 
 const templates = ref([])
@@ -229,11 +161,6 @@ const showAccountDetail = ref(false)
 const activeTemplate = ref(null)
 const templateData = ref({})
 const loading = ref(false)
-const adjustments = reactive({})
-const adjustmentDirty = ref(false)
-const adjustmentSaved = ref(true)
-const saveTimer = ref(null)
-const subTab = ref('audit')
 const hierarchyData = ref(null)
 const hierarchyLoading = ref(false)
 const openingDebitPositive = ref(true)  // true=借方为正, false=贷方为正
@@ -284,7 +211,6 @@ const categoryTagType = computed(() => {
 
 async function handleSelectTemplate(tpl) {
   activeTemplate.value = tpl
-  subTab.value = tpl.is_account_detail ? 'detail' : 'audit'
   loading.value = true
   hierarchyData.value = null
 
@@ -292,8 +218,6 @@ async function handleSelectTemplate(tpl) {
     try {
       const data = await getDraftTemplate(tpl.code)
       templateData.value = data
-      initAdjustments()
-      await loadAdjustments()
     } catch {} finally {
       loading.value = false
     }
@@ -313,15 +237,9 @@ async function handleSelectTemplate(tpl) {
 }
 
 function handleBack() {
-  // 退出前自动保存
-  if (adjustmentDirty.value && activeTemplate.value) {
-    saveAdjustmentsNow()
-  }
   activeTemplate.value = null
   templateData.value = {}
   hierarchyData.value = null
-  // 清空 adjustments
-  Object.keys(adjustments).forEach(k => delete adjustments[k])
 }
 
 async function loadHierarchy() {
@@ -342,234 +260,17 @@ function handleOpeningSignChange(val) {
   loadHierarchy()
 }
 
-// ==================== 调整值管理 ====================
 
-function initAdjustments() {
-  // 为每个数据行初始化调整值
-  for (const row of templateData.value.rows) {
-    if (!row.is_total && !row.is_net && row.code) {
-      if (!adjustments[row.code]) {
-        adjustments[row.code] = { adj_debit: 0, adj_credit: 0 }
-      }
-    }
-  }
-}
-
-async function loadAdjustments() {
-  if (!activeTemplate.value) return
-  try {
-    const data = await getTemplateAdjustments(activeTemplate.value.code)
-    const saved = data.adjustments || {}
-    for (const [code, adj] of Object.entries(saved)) {
-      if (adjustments[code]) {
-        adjustments[code].adj_debit = adj.adj_debit || 0
-        adjustments[code].adj_credit = adj.adj_credit || 0
-      } else {
-        adjustments[code] = { adj_debit: adj.adj_debit || 0, adj_credit: adj.adj_credit || 0 }
-      }
-    }
-    // 加载后重新计算
-    recalcAll()
-    adjustmentDirty.value = false
-    adjustmentSaved.value = true
-  } catch {
-    // 没有保存的调整值，用默认0
-    adjustmentDirty.value = false
-    adjustmentSaved.value = true
-  }
-}
-
-function onAdjustmentChange() {
-  adjustmentDirty.value = true
-  adjustmentSaved.value = false
-  recalcAll()
-
-  // 防抖自动保存
-  if (saveTimer.value) clearTimeout(saveTimer.value)
-  saveTimer.value = setTimeout(() => {
-    saveAdjustmentsNow()
-  }, 2000)
-}
-
-async function saveAdjustmentsNow() {
-  if (!activeTemplate.value || !adjustmentDirty.value) return
-
-  // 只保存有非零调整的行
-  const adjData = {}
-  for (const [code, adj] of Object.entries(adjustments)) {
-    if (adj.adj_debit || adj.adj_credit) {
-      adjData[code] = { adj_debit: adj.adj_debit, adj_credit: adj.adj_credit }
-    }
-  }
-
-  try {
-    await saveTemplateAdjustments(activeTemplate.value.code, adjData)
-    adjustmentDirty.value = false
-    adjustmentSaved.value = true
-  } catch {
-    adjustmentSaved.value = false
-  }
-}
-
-// ==================== 核心计算引擎 ====================
-
-function recalcAll() {
-  const rows = templateData.value.rows
-  if (!rows) return
-
-  // Step 1: 计算所有数据行的审定数
-  for (const row of rows) {
-    if (row.is_total || row.is_net) continue
-    const unaudited = row.values.unaudited || 0
-    const adj = adjustments[row.code]
-    const adjDebit = adj?.adj_debit || 0
-    const adjCredit = adj?.adj_credit || 0
-    row.values.audited = round(unaudited + adjDebit - adjCredit, 2)
-  }
-
-  // Step 2: 计算合计/净额行的审定数（基于公式）
-  for (const row of rows) {
-    if (!row.is_total && !row.is_net) continue
-    row.values.audited = computeFormulaValue(row)
-  }
-}
-
-/**
- * 根据公式计算某行的审定数
- * 公式规则：
- * - 有 source_rows 时：遍历 source_rows，每行的审定数 × 该行的 sign，累加
- * - is_total 无 source_rows 时：汇总所有前序数据行的审定数 × sign
- */
-function computeFormulaValue(row) {
-  const rows = templateData.value.rows
-  const sourceRows = row.source_rows
-  const rowIndex = rows.indexOf(row)
-
-  if (sourceRows && sourceRows.length > 0) {
-    // 显式公式
-    let total = 0
-    for (const srcCode of sourceRows) {
-      const srcRow = rows.find(r => r.code === srcCode)
-      if (srcRow) {
-        const srcSign = srcRow.sign || 1
-        const srcAudited = srcRow.values.audited || 0
-        total += srcAudited * srcSign
-      }
-    }
-    return round(total, 2)
-  }
-
-  if (row.is_total) {
-    // 隐式合计：前序所有数据行
-    let total = 0
-    for (let j = 0; j < rowIndex; j++) {
-      const prev = rows[j]
-      if (prev.is_total || prev.is_net) continue
-      total += (prev.values.audited || 0) * (prev.sign || 1)
-    }
-    return round(total, 2)
-  }
-
-  return row.values.unaudited || 0
-}
-
-// ==================== 样式辅助 ====================
-
-function rowClass(row) {
-  if (row.is_net) return 'row-net'
-  if (row.is_total) return 'row-total'
-  return ''
-}
-
-function labelClass(row) {
-  if (row.is_net) return 'label-net'
-  if (row.is_total) return 'label-total'
-  return 'label-indent'
-}
 
 // ==================== 导出 Excel ====================
 
 async function handleExport() {
-  // 明细表导出
-  if (subTab.value === 'detail' && hierarchyData.value) {
+  if (hierarchyData.value) {
     await exportHierarchyExcel()
-    return
   }
-
-  await saveAdjustmentsNow()
-
-  const wb = new ExcelJS.Workbook()
-  const ws = wb.addWorksheet(templateData.value.name || '审定表')
-
-  // 标题行
-  ws.mergeCells('A1:E1')
-  const titleCell = ws.getCell('A1')
-  titleCell.value = `${templateData.value.name} 审定表`
-  titleCell.font = { bold: true, size: 14 }
-  titleCell.alignment = { horizontal: 'center' }
-
-  // 表头
-  const headers = ['项目', ...templateData.value.columns.map(c => c.label)]
-  ws.addRow(headers)
-  const headerRow = ws.getRow(2)
-  headerRow.font = { bold: true, size: 11 }
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } }
-  headerRow.alignment = { horizontal: 'center' }
-
-  // 数据行
-  for (let i = 0; i < templateData.value.rows.length; i++) {
-    const row = templateData.value.rows[i]
-    const rowData = [row.label]
-
-    for (const col of templateData.value.columns) {
-      if (col.source === 'end_balance') {
-        rowData.push(row.values.unaudited || 0)
-      } else if (col.source === 'adjustment_debit') {
-        if (row.is_total || row.is_net) {
-          rowData.push(0)
-        } else {
-          rowData.push(adjustments[row.code]?.adj_debit || 0)
-        }
-      } else if (col.source === 'adjustment_credit') {
-        if (row.is_total || row.is_net) {
-          rowData.push(0)
-        } else {
-          rowData.push(adjustments[row.code]?.adj_credit || 0)
-        }
-      } else if (col.source === 'audited_balance') {
-        rowData.push(row.values.audited || 0)
-      }
-    }
-
-    const excelRow = ws.addRow(rowData)
-    if (row.is_total || row.is_net) {
-      excelRow.font = { bold: true }
-    }
-  }
-
-  // 列宽 + 数字格式
-  ws.getColumn(1).width = 24
-  for (let c = 2; c <= headers.length; c++) {
-    ws.getColumn(c).width = 18
-    for (let r = 3; r <= ws.rowCount; r++) {
-      const cell = ws.getCell(r, c)
-      cell.numFmt = '#,##0.00'
-    }
-  }
-
-  const buf = await wb.xlsx.writeBuffer()
-  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${templateData.value.name}_审定表.xlsx`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
-// ==================== 明细表导出 ====================
+// ==================== 明细表导出 ===================
 
 async function exportHierarchyExcel() {
   if (!hierarchyData.value) return
@@ -628,12 +329,7 @@ async function exportHierarchyExcel() {
   setTimeout(() => URL.revokeObjectURL(url), 10000)
 }
 
-// ==================== 工具函数 ====================
 
-function round(val, decimals = 2) {
-  const factor = Math.pow(10, decimals)
-  return Math.round(val * factor) / factor
-}
 </script>
 
 <style scoped>
@@ -705,9 +401,7 @@ function round(val, decimals = 2) {
   padding-bottom: 14px; border-bottom: 2px solid #e8f0fe; margin-bottom: 16px;
 }
 .content-header h3 { font-size: 16px; margin: 0; }
-.header-tabs { flex: 1; }
 
-.save-tag { margin-left: auto; }
 
 .detail-subject-selector {
   display: flex; align-items: center; gap: 8px;
@@ -715,49 +409,6 @@ function round(val, decimals = 2) {
   background: #f8f9fb; border-radius: 8px;
 }
 .selector-label { font-size: 13px; color: #606266; font-weight: 500; white-space: nowrap; }
-
-.draft-table {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-
-.draft-table th, .draft-table td {
-  border: 1px solid #ebeef5; padding: 10px 12px; text-align: right;
-}
-
-.draft-table th {
-  background: linear-gradient(180deg, #f8f9fb, #f0f2f5);
-  font-weight: 600; color: #606266;
-  text-align: center; font-size: 12px;
-}
-
-.draft-table .col-label {
-  text-align: left; min-width: 160px; background: #fafbfc;
-}
-
-.draft-table .col-value { min-width: 120px; }
-
-.draft-table .row-total td {
-  background: #f5f7fa; font-weight: 600;
-  border-top: 2px solid #dcdfe6;
-}
-
-.draft-table .row-net td {
-  background: #edf7ed; font-weight: 700;
-  border-top: 2px double #67c23a;
-}
-
-.label-indent { padding-left: 12px; }
-.label-total { font-weight: 600; }
-.label-net { font-weight: 700; }
-
-.adj-input { width: 100%; }
-.adj-input :deep(.el-input__inner) { text-align: right; padding: 0 4px; }
-
-.computed-value {
-  font-family: 'SF Mono', Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
 
 /* ==================== 层级明细表样式 ==================== */
 

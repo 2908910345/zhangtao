@@ -19,7 +19,7 @@
             <el-table-column type="index" label="#" width="50" />
             <el-table-column prop="value" label="维度值" show-overflow-tooltip>
               <template #default="{ row }">
-                <el-link type="primary" :underline="false" @click="filterByDim(type, row.value)">
+                <el-link type="primary" underline="never" @click="filterByDim(type, row.value)">
                   {{ row.value }}
                 </el-link>
               </template>

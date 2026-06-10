@@ -33,7 +33,7 @@
           <span class="node-label">{{ data.name }}</span>
           <span v-if="!data.is_dimension" class="node-code">{{ data.code }}</span>
           <span v-if="data.is_dimension && data.dimension" class="node-dim-type">
-            {{ data.dimension.split(':')[0] }}
+            维度
           </span>
           <span v-if="data.end_debit || data.end_credit" class="node-amount">
             {{ formatAmount(data.end_debit || data.end_credit) }}

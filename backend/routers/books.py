@@ -6,7 +6,7 @@ from io import BytesIO
 import json
 from urllib.parse import quote
 from backend.database import get_db, get_journal_table, ensure_journal_table, get_existing_journal_table_name, get_journal_table_name, drop_journal_table, async_session_factory
-from backend.models import Book, BalanceSubject, JournalEntry, AdjustmentEntry
+from backend.models import Book, BalanceSubject, JournalEntry
 from backend.schemas import BookCreate, BookResponse, BookListResponse, MessageResponse
 
 router = APIRouter(prefix="/api/books", tags=["账套管理"])
@@ -153,7 +153,6 @@ async def restore_book(
     if old_book:
         await db.execute(BalanceSubject.__table__.delete().where(BalanceSubject.book_name == book_name))
         await db.execute(JournalEntry.__table__.delete().where(JournalEntry.book_name == book_name))
-        await db.execute(AdjustmentEntry.__table__.delete().where(AdjustmentEntry.book_name == book_name))
         # 也删除分账套动态表中的数据
         existing_table_name = await get_existing_journal_table_name(book_name)
         if existing_table_name:
@@ -221,7 +220,6 @@ async def delete_book(name: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"账套 '{name}' 不存在")
 
     await db.execute(BalanceSubject.__table__.delete().where(BalanceSubject.book_name == name))
-    await db.execute(AdjustmentEntry.__table__.delete().where(AdjustmentEntry.book_name == name))
     await db.execute(Book.__table__.delete().where(Book.name == name))
 
     # 尝试删除独立序时账分表

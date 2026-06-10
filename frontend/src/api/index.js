@@ -130,32 +130,6 @@ export function searchSubjects(keyword) {
   return http.get('/subjects/search', { params: { keyword, book_name: currentBookName } })
 }
 
-// 审计调整分录
-export function getAdjustments(bookName = null) {
-  return http.get('/adjustments', { params: { book_name: bookName || currentBookName } })
-}
-
-export function createAdjustment(data, bookName = null) {
-  return http.post('/adjustments', data, { params: { book_name: bookName || currentBookName } })
-}
-
-export function updateAdjustment(entryId, data) {
-  return http.put(`/adjustments/${entryId}`, data)
-}
-
-export function deleteAdjustment(entryId) {
-  return http.delete(`/adjustments/${entryId}`)
-}
-
-export function clearAdjustments(bookName = null) {
-  return http.delete('/adjustments', { params: { book_name: bookName || currentBookName } })
-}
-
-// 试算平衡表
-export function getTrialBalance(bookName = null) {
-  return http.get('/trial-balance', { params: { book_name: bookName || currentBookName } })
-}
-
 // 凭证汇总
 export function getVoucherBook(params = {}) {
   return http.get('/vouchers', { params: { ...params, book_name: currentBookName } })
@@ -188,15 +162,6 @@ export function getDetailHierarchy(templateCode, openingSign = 'debit') {
   })
 }
 
-// 底稿调整值持久化
-export function getTemplateAdjustments(code, bookName = null) {
-  return http.get(`/draft-templates/${code}/adjustments`, { params: { book_name: bookName || currentBookName } })
-}
-
-export function saveTemplateAdjustments(code, adjustments, bookName = null) {
-  return http.put(`/draft-templates/${code}/adjustments`, { adjustments }, { params: { book_name: bookName || currentBookName } })
-}
-
 // 账套备份恢复
 export function backupBook(name) {
   return http.get(`/books/${name}/backup`, { responseType: 'blob' })
@@ -206,6 +171,24 @@ export function restoreBook(file, name) {
   const form = new FormData()
   form.append('file', file)
   return http.post('/books/restore', form, { params: { name } })
+}
+
+// ═══════════════════════════════════════
+// 风险分析 API
+// ═══════════════════════════════════════
+
+export function getLargeTransactions(params = {}) {
+  return http.get('/risk/large-transactions', {
+    params: { book_name: currentBookName, ...params }
+  })
+}
+
+export function getBalanceFluctuation(params = {}) {
+  return http.get('/risk/balance-fluctuation', { params })
+}
+
+export function getGrossMarginAnalysis(params = {}) {
+  return http.get('/risk/gross-margin-analysis', { params })
 }
 
 export default http

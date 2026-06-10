@@ -4,7 +4,7 @@ from sqlalchemy import select, func, or_
 import tempfile
 import os
 from backend.database import get_db, get_existing_journal_table_name, get_journal_table, escape_like
-from backend.models import BalanceSubject, Book, JournalEntry, AdjustmentEntry
+from backend.models import BalanceSubject, Book, JournalEntry
 from backend.schemas import (
     UploadBalanceResponse,
     SubjectTreeNode,
@@ -192,9 +192,8 @@ def _build_tree(subject, children_map):
     elif has_dims:
         # 末级科目有维度明细行，直接作为子节点
         for dim_row in subject.dim_rows:
-            dim_items = _parse_dimensions(dim_row.dimension)
-            dim_label = dim_items[0][1] if dim_items else dim_row.dimension
-            dim_type = dim_items[0][0] if dim_items else ""
+            dim_label = dim_row.dimension or ""
+            dim_type = ""
             dim_node = SubjectTreeNode(
                 code=f"{subject.code}:{dim_row.dimension}",
                 name=dim_label,
@@ -245,8 +244,7 @@ async def get_subject_tree(
                 dim_children = []
                 if has_dims:
                     for dim_row in s.dim_rows:
-                        dim_items = _parse_dimensions(dim_row.dimension)
-                        dim_label = dim_items[0][1] if dim_items else dim_row.dimension
+                        dim_label = dim_row.dimension or ""
                         dim_children.append(SubjectTreeNode(
                             code=f"{s.code}:{dim_row.dimension}",
                             name=dim_label,
@@ -451,9 +449,6 @@ async def clear_all_data(
     journal_table = get_journal_table(book_name) if journal_table_name != "journal_entries" else JournalEntry.__table__
     await db.execute(
         journal_table.delete().where(journal_table.c.book_name == book_name)
-    )
-    await db.execute(
-        AdjustmentEntry.__table__.delete().where(AdjustmentEntry.book_name == book_name)
     )
     await db.flush()
     return {"message": f"账套 '{book_name}' 数据已清除"}
