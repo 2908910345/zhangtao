@@ -71,7 +71,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onActivated, computed } from 'vue'
 import { Search, Notebook, CircleCheck, WarningFilled } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
 import { getVoucherBook, getStatistics } from '../api/index.js'
@@ -128,6 +128,11 @@ onMounted(() => {
   loadPeriods()
 })
 
+onActivated(() => {
+  loadData(currentPage.value)
+  loadPeriods()
+})
+
 defineExpose({ loadData })
 </script>
 
@@ -150,11 +155,11 @@ defineExpose({ loadData })
 .total-hint { font-size: 12px; color: var(--text-secondary, #909399); white-space: nowrap; margin-left: 8px; }
 
 .amount-debit {
-  color: var(--text-primary, #303133); font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  color: var(--text-primary, #303133); font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 .amount-credit {
-  color: #e23c3c; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  color: #e23c3c; font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 

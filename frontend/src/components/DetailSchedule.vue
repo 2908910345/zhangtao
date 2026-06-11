@@ -233,7 +233,7 @@ defineExpose({ loadDimensions: loadDimensionTypes, handleExport })
 
 .col-amount {
   min-width: 130px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 

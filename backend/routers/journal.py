@@ -143,6 +143,7 @@ def _serialize_entry(e, counterpart: str = '') -> dict:
         'book_name': e.book_name,
         'created_at': e.created_at.isoformat() if e.created_at else None,
         'org': e.org or '',
+        'date': e.date or '',
         'period': e.period or '',
         'voucher_no': e.voucher_no,
         'summary': e.summary or '',

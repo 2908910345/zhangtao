@@ -132,6 +132,10 @@
               <el-option label="100%" :value="100" />
             </el-select>
           </el-form-item>
+          <el-form-item label="金额阈值">
+            <el-input-number v-model="fluctForm.amount_threshold" :min="0" :step="50000"
+                             style="width:150px" placeholder="0=不启用" />
+          </el-form-item>
           <el-form-item label="分类">
             <el-select v-model="fluctForm.category" placeholder="全部" style="width:110px" clearable>
               <el-option label="资产" value="资产" />
@@ -429,6 +433,7 @@ const fluctForm = reactive({
   compare_book: '',
   balance_type: 'end',
   threshold_pct: 30,
+  amount_threshold: 0,
   category: '',
   subject_prefix: '',
 })
@@ -508,6 +513,7 @@ async function searchFluctuation() {
       compare_type: 'mom',
       balance_type: fluctForm.balance_type,
       threshold_pct: fluctForm.threshold_pct,
+      amount_threshold: fluctForm.amount_threshold || 0,
       page: fluctPage.value,
       page_size: fluctPageSize,
     }

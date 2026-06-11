@@ -16,6 +16,19 @@
 
       <div class="setting-item">
         <div class="setting-info">
+          <div class="setting-label">隐藏金额全为零的科目（科目余额表）</div>
+          <div class="setting-desc">开启后，期初金额、本期发生额、期末余额全部为零的科目行将不显示</div>
+        </div>
+        <el-switch
+          :model-value="settings.hideZeroSubjects"
+          @update:model-value="(v) => updateSetting('hideZeroSubjects', v)"
+          active-text="隐藏"
+          inactive-text="显示"
+        />
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-info">
           <div class="setting-label">序时账与凭证显示对方科目</div>
           <div class="setting-desc">开启后，序时账和凭证中会显示同一凭证、同一摘要下的其他科目名称</div>
         </div>

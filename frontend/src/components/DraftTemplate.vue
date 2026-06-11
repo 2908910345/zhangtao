@@ -435,7 +435,7 @@ async function exportHierarchyExcel() {
 .h-col-name { text-align: left; min-width: 120px; }
 .h-col-amount {
   min-width: 120px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 .h-col-amount.debit { color: #303133; }

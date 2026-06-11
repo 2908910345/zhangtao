@@ -18,7 +18,7 @@
     <el-tree
       v-else
       ref="treeRef"
-      :data="treeData"
+      :data="filteredTree"
       :props="treeProps"
       node-key="code"
       highlight-current
@@ -26,6 +26,7 @@
       :filter-node-method="filterNode"
       @node-click="handleNodeClick"
       @node-dblclick="handleNodeDblclick"
+      @node-contextmenu="handleContextMenu"
     >
       <template #default="{ data }">
         <span class="tree-node" :class="{ 'dim-node': data.is_dimension }">
@@ -41,13 +42,37 @@
         </span>
       </template>
     </el-tree>
+
+    <!-- 右键菜单 -->
+    <Teleport to="body">
+      <div
+        v-if="contextMenuVisible"
+        class="tree-context-menu"
+        :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }"
+        @click.stop
+        @mouseleave="closeContextMenu"
+      >
+        <div class="ctx-item" @click="expandAll">全部展开</div>
+        <div class="ctx-item" @click="collapseAll">全部收缩</div>
+      </div>
+      <div
+        v-if="contextMenuVisible"
+        class="ctx-overlay"
+        @click="closeContextMenu"
+        @contextmenu.prevent="closeContextMenu"
+      />
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Search, PriceTag } from '@element-plus/icons-vue'
 import { formatAmount } from '../utils/format.js'
+
+import { useSettings } from '../utils/settings.js'
+
+const { settings } = useSettings()
 
 const props = defineProps({
   treeData: { type: Array, default: () => [] },
@@ -59,6 +84,36 @@ const emit = defineEmits(['select', 'dblclick'])
 const treeRef = ref(null)
 const searchText = ref('')
 const treeProps = { children: 'children', label: 'name' }
+
+function isAllZero(node) {
+  return (!node.year_start_debit || node.year_start_debit === 0) &&
+         (!node.year_start_credit || node.year_start_credit === 0) &&
+         (!node.period_debit || node.period_debit === 0) &&
+         (!node.period_credit || node.period_credit === 0) &&
+         (!node.end_debit || node.end_debit === 0) &&
+         (!node.end_credit || node.end_credit === 0)
+}
+
+function filterZeroNodes(nodes) {
+  if (!nodes) return nodes
+  const result = []
+  for (const node of nodes) {
+    // 浅拷贝，不修改原始对象
+    const newNode = { ...node }
+    let keep = !isAllZero(newNode)
+    if (newNode.children && newNode.children.length > 0) {
+      newNode.children = filterZeroNodes(newNode.children)
+      if (newNode.children.length > 0) keep = true
+    }
+    if (keep) result.push(newNode)
+  }
+  return result
+}
+
+const filteredTree = computed(() => {
+  if (!settings.hideZeroSubjects) return props.treeData
+  return filterZeroNodes(props.treeData)
+})
 
 function filterNode(value, data) {
   if (!value) return true
@@ -76,6 +131,46 @@ function handleNodeClick(data) {
 function handleNodeDblclick(data) {
   emit('dblclick', data)
 }
+
+// 右键菜单
+const contextMenuVisible = ref(false)
+const contextMenuPos = ref({ x: 0, y: 0 })
+
+function handleContextMenu(evt, data, node) {
+  evt.preventDefault()
+  contextMenuPos.value = { x: evt.clientX, y: evt.clientY }
+  contextMenuVisible.value = true
+}
+
+function closeContextMenu() {
+  contextMenuVisible.value = false
+}
+
+function getAllExpandableKeys(nodes) {
+  const keys = []
+  for (const node of nodes) {
+    if (node.children && node.children.length > 0) {
+      keys.push(node.code)
+      keys.push(...getAllExpandableKeys(node.children))
+    }
+  }
+  return keys
+}
+
+function expandAll() {
+  const keys = getAllExpandableKeys(filteredTree.value)
+  treeRef.value.store.setDefaultExpandedKeys(keys)
+  closeContextMenu()
+}
+
+function collapseAll() {
+  Object.values(treeRef.value.store.nodesMap).forEach((node) => {
+    if (node.childNodes && node.childNodes.length > 0) {
+      node.collapse()
+    }
+  })
+  closeContextMenu()
+}
 </script>
 
 <style scoped>
@@ -89,6 +184,36 @@ function handleNodeDblclick(data) {
   padding: 10px 14px;
   background: #fff;
   border-bottom: 1px solid var(--border-color, #ebeef5);
+}
+
+.tree-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 4px 0;
+  min-width: 120px;
+}
+
+.ctx-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #303133;
+  transition: background 0.15s;
+}
+
+.ctx-item:hover {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.ctx-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
 }
 
 .tree-search :deep(.el-input__wrapper) {
@@ -152,7 +277,7 @@ function handleNodeDblclick(data) {
 .node-code {
   color: #a8abb2;
   font-size: 11px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   flex-shrink: 0;
 }
 
@@ -168,7 +293,7 @@ function handleNodeDblclick(data) {
 .node-amount {
   color: var(--primary, #409eff);
   font-size: 11px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   font-weight: 600;
   flex-shrink: 0;
   min-width: 72px;

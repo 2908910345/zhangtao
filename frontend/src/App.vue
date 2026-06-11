@@ -567,6 +567,7 @@ onUnmounted(() => {
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --font-number: 'Times New Roman', serif;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -802,7 +803,7 @@ html, body, #app {
 .search-code {
   font-size: 12px;
   color: #909399;
-  font-family: 'SF Mono', Consolas, monospace;
+  font-family: var(--font-number);
 }
 
 .search-empty, .search-hint {

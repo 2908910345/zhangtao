@@ -98,6 +98,7 @@ class FluctuationResponse(BaseModel):
     compare_type: str = 'mom'
     balance_type: str = 'end'
     threshold_pct: float = 30.0
+    amount_threshold: float = 0.0
     summary: FluctuationSummary = FluctuationSummary()
     items: list[FluctuationItem] = []
     unmatched: list[UnmatchedSubject] = []
@@ -189,6 +190,8 @@ async def api_balance_fluctuation(
                               description="end=期末余额 / period=本期发生额 / year_total=本年累计"),
     threshold_pct: float = Query(30.0, ge=0, le=1000,
                                  description="波动率阈值百分比，超过此值的标记为异常"),
+    amount_threshold: float = Query(0.0, ge=0,
+                                     description="变化额绝对阈值，低于此值的波动降级（0 表示不启用）"),
     category: Optional[str] = Query(None, description="按分类筛选（资产/负债/权益/损益）"),
     subject_prefix: Optional[str] = Query(None, description="科目编码前缀"),
     page: int = Query(1, ge=1),
@@ -203,6 +206,7 @@ async def api_balance_fluctuation(
         compare_type=compare_type,
         balance_type=balance_type,
         threshold_pct=threshold_pct,
+        amount_threshold=amount_threshold,
         category=category,
         subject_prefix=subject_prefix,
         page=page,

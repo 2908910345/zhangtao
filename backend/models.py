@@ -40,6 +40,7 @@ class JournalEntry(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     book_name = Column(String(200), default="default", nullable=False, index=True, comment="所属账套")
     org = Column(String(100), default="", comment="核算组织")
+    date = Column(String(20), default="", comment="记账日期")
     period = Column(String(50), default="", index=True, comment="期间")
     voucher_no = Column(String(50), nullable=False, index=True, comment="凭证号")
     summary = Column(String(500), default="", comment="摘要")

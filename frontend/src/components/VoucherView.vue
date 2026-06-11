@@ -26,6 +26,11 @@
           </div>
           <div class="info-divider"></div>
           <div class="info-item">
+            <span class="info-label">记账日期</span>
+            <span class="info-value">{{ voucherData[0]?.date || '-' }}</span>
+          </div>
+          <div class="info-divider"></div>
+          <div class="info-item">
             <span class="info-label">期间</span>
             <span class="info-value">{{ voucherData[0]?.period || '-' }}</span>
           </div>
@@ -306,7 +311,7 @@ const counterparties = computed(() => {
   font-size: 13px;
   font-weight: 700;
   color: #1a73e8;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
 }
 
 .voucher-info {
@@ -408,7 +413,7 @@ const counterparties = computed(() => {
   width: 56px;
   text-align: center;
   color: #8892a4 !important;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   font-size: 12px !important;
 }
 .col-summary {
@@ -429,7 +434,7 @@ const counterparties = computed(() => {
 .subject-code-text {
   font-size: 11px;
   color: #8892a4;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   margin-right: 6px;
 }
 .subject-name-text {
@@ -445,7 +450,7 @@ const counterparties = computed(() => {
   width: 140px;
   text-align: right;
   padding-right: 16px !important;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -493,7 +498,7 @@ const counterparties = computed(() => {
 .total-value {
   font-size: 15px;
   font-weight: 700;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
 }
 .total-value.debit {
   color: #1a1a2e;

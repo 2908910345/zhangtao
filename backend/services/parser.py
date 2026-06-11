@@ -221,6 +221,8 @@ def _build_journal_col_map(header_row):
         cl = cell
         if any(kw in cl for kw in ['核算组织', '公司', '单位']):
             col_map['org'] = c
+        elif any(kw in cl for kw in ['记账日期', '业务日期', '日期']):
+            col_map['date'] = c
         elif any(kw in cl for kw in ['期间', '会计期间']):
             col_map['period'] = c
         elif any(kw in cl for kw in ['凭证号', '凭证编号']):
@@ -266,6 +268,7 @@ def _parse_journal_row(row, col_map):
 
     return {
         'org': _get_col_val(row, col_map, 'org'),
+        'date': _get_col_val(row, col_map, 'date'),
         'period': _get_col_val(row, col_map, 'period'),
         'voucher_no': voucher_no,
         'summary': _get_col_val(row, col_map, 'summary'),

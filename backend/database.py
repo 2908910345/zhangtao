@@ -95,6 +95,7 @@ def _build_journal_table(table_name: str) -> Table:
         Column('id', Integer, primary_key=True, autoincrement=True),
         Column('book_name', String(200), nullable=False),
         Column('org', String(100), default=''),
+        Column('date', String(20), default='', comment='记账日期'),
         Column('period', String(50), default=''),
         Column('voucher_no', String(50), nullable=False, index=True),
         Column('summary', String(500), default=''),

@@ -194,6 +194,15 @@ function formatRow(s) {
   }
 }
 
+function isAllZero(s) {
+  return (!s.year_start_debit || s.year_start_debit === 0) &&
+         (!s.year_start_credit || s.year_start_credit === 0) &&
+         (!s.period_debit || s.period_debit === 0) &&
+         (!s.period_credit || s.period_credit === 0) &&
+         (!s.end_debit || s.end_debit === 0) &&
+         (!s.end_credit || s.end_credit === 0)
+}
+
 const displaySubjects = computed(() => {
   const all = props.subjects
   if (!all || all.length === 0) return []
@@ -204,6 +213,7 @@ const displaySubjects = computed(() => {
       const s = all[i]
       if (s.code.includes('.')) continue
       if (!settings.showDimensionSubjects && s.dimension) continue
+      if (settings.hideZeroSubjects && isAllZero(s)) continue
       result.push(formatRow(s))
     }
     return result
@@ -216,6 +226,7 @@ const displaySubjects = computed(() => {
     if (s.code === props.parentCode ||
         (s.code.startsWith(prefix) && !s.code.substring(prefix.length).includes('.'))) {
       if (!settings.showDimensionSubjects && s.dimension) continue
+      if (settings.hideZeroSubjects && isAllZero(s)) continue
       result.push(formatRow(s))
     }
   }
@@ -367,14 +378,14 @@ function handleRowDblclick(row) {
   color: var(--text-secondary, #909399);
   font-size: 12px;
   margin-left: 4px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   background: var(--bg-light, #f5f7fa);
   padding: 1px 8px;
   border-radius: 4px;
 }
 
 .amount {
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
   color: var(--text-primary, #303133);
   font-weight: 500;
   font-variant-numeric: tabular-nums;

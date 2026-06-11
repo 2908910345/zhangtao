@@ -246,7 +246,7 @@ async function downloadTemplate(type) {
   font-size: 30px;
   font-weight: 700;
   color: var(--primary, #409eff);
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
 }
 .summary-item .label { font-size: 13px; color: var(--text-secondary, #909399); margin-top: 6px; }
 </style>

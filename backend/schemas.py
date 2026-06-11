@@ -32,6 +32,7 @@ class BalanceListResponse(BaseModel):
 
 class JournalEntryCreate(BaseModel):
     org: str = ""
+    date: str = ""
     period: str = ""
     voucher_no: str
     summary: str = ""

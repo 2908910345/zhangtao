@@ -102,6 +102,7 @@ def _serialize_entry(e, counterpart: str = '') -> dict:
         'id': getattr(e, 'id', 0),
         'book_name': getattr(e, 'book_name', ''),
         'org': getattr(e, 'org', '') or '',
+        'date': getattr(e, 'date', '') or '',
         'period': getattr(e, 'period', '') or '',
         'voucher_no': getattr(e, 'voucher_no', ''),
         'summary': getattr(e, 'summary', '') or '',
@@ -179,6 +180,82 @@ def _group_subjects_by_code(subjects: list) -> dict:
                     g[key] += entry[key]
 
         result[code] = g
+    return result
+
+
+def _aggregate_to_l1(groups: dict) -> dict:
+    """将按 code 分组的科目聚合到一级科目。
+
+    对于每个一级编码（无点号）：
+    - 如果一级编码本身在 groups 中有值，直接用（已含子科目）
+    - 否则累加所有直接子级（一级编码.XXX，且只有一个点号）
+
+    返回 {l1_code: {name, 金额字段...}}
+    """
+    # 找出所有一级编码
+    l1_codes = set()
+    has_dot = set()
+    for code in groups:
+        if '.' in code:
+            l1 = code.split('.')[0]
+            l1_codes.add(l1)
+            has_dot.add(code)
+        else:
+            l1_codes.add(code)
+
+    result = {}
+    for l1 in l1_codes:
+        if l1 in groups:
+            groups[l1]['code'] = l1
+            result[l1] = dict(groups[l1])
+            # 如果 sum 为 0 且有一级子级，尝试从子级累加
+            has_children = any(
+                c.startswith(l1 + '.') and c.count('.') == 1
+                for c in has_dot
+            )
+            if has_children:
+                is_zero = all(
+                    result[l1][k] == 0.0
+                    for k in ('year_start_debit', 'year_start_credit',
+                              'period_debit', 'period_credit',
+                              'end_debit', 'end_credit')
+                )
+                if is_zero:
+                    # 一级余额为 0 且有子级→从子级累加
+                    for k in ('year_start_debit', 'year_start_credit',
+                              'period_debit', 'period_credit',
+                              'year_total_debit', 'year_total_credit',
+                              'end_debit', 'end_credit'):
+                        result[l1][k] = 0.0
+                    for code, g in groups.items():
+                        if code.startswith(l1 + '.') and code.count('.') == 1:
+                            for k in ('year_start_debit', 'year_start_credit',
+                                      'period_debit', 'period_credit',
+                                      'year_total_debit', 'year_total_credit',
+                                      'end_debit', 'end_credit'):
+                                result[l1][k] += g[k]
+            continue
+
+        # l1 不在 groups 中，从直接子级累加
+        entry = {
+            'code': l1,
+            'name': '',
+            'year_start_debit': 0.0, 'year_start_credit': 0.0,
+            'period_debit': 0.0, 'period_credit': 0.0,
+            'year_total_debit': 0.0, 'year_total_credit': 0.0,
+            'end_debit': 0.0, 'end_credit': 0.0,
+        }
+        for code, g in groups.items():
+            if code.startswith(l1 + '.') and code.count('.') == 1:
+                for k in entry:
+                    if k in ('code', 'name'):
+                        continue
+                    entry[k] += g[k]
+                if not entry['name']:
+                    entry['name'] = g['name']
+        if entry['name']:
+            result[l1] = entry
+
     return result
 
 
@@ -364,6 +441,7 @@ async def cross_book_fluctuation(
     compare_type: str = 'mom',
     balance_type: str = 'end',
     threshold_pct: float = 30.0,
+    amount_threshold: float = 0.0,
     category: Optional[str] = None,
     subject_prefix: Optional[str] = None,
     page: int = 1,
@@ -395,6 +473,10 @@ async def cross_book_fluctuation(
     cur_groups = _group_subjects_by_code(cur_all)
     cmp_groups = _group_subjects_by_code(cmp_all)
 
+    # 聚合到一级科目后比较，避免父子级重复
+    cur_groups = _aggregate_to_l1(cur_groups)
+    cmp_groups = _aggregate_to_l1(cmp_groups)
+
     name_category_map = _get_category_map()
 
     codes_cur = set(cur_groups.keys())
@@ -422,6 +504,12 @@ async def cross_book_fluctuation(
 
         chg_amt, chg_pct, direction = _calc_change(cur_bal, cmp_bal)
         level, reason = _risk_level(chg_pct)
+
+        # 变化额低于阈值时降级（绝对金额小的高百分比无意义）
+        if amount_threshold > 0 and abs(chg_amt) < amount_threshold:
+            if level in ('critical', 'high'):
+                level = 'medium'
+                reason = f'变化额绝对值仅 {abs(chg_amt):,.2f}，低于 {amount_threshold:,.0f} 阈值，降级为关注'
 
         items.append({
             'code': code,
@@ -468,8 +556,9 @@ async def cross_book_fluctuation(
         'compare_type': compare_type,
         'balance_type': balance_type,
         'threshold_pct': threshold_pct,
+        'amount_threshold': amount_threshold,
         'summary': {
-            'total_subjects': len(cur_all),
+            'total_subjects': len(codes_cur),
             'matched_subjects': len(common),
             'unmatched_subjects': len(codes_cur - codes_cmp),
             'anomaly_count': anomaly_count,
@@ -481,13 +570,15 @@ async def cross_book_fluctuation(
 
 
 def _error_fluctuation_response(book_name, compare_book, compare_type,
-                                balance_type, threshold_pct, error_msg):
+                                balance_type, threshold_pct, error_msg,
+                                amount_threshold=0.0):
     return {
         'book_name': book_name,
         'compare_book': compare_book,
         'compare_type': compare_type,
         'balance_type': balance_type,
         'threshold_pct': threshold_pct,
+        'amount_threshold': amount_threshold,
         'summary': {
             'total_subjects': 0, 'matched_subjects': 0,
             'unmatched_subjects': 0, 'anomaly_count': 0, 'anomaly_rate': '0%',

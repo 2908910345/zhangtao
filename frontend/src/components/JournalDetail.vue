@@ -39,6 +39,7 @@
         max-height="calc(100vh - 340px)"
         style="width: 100%"
       >
+        <el-table-column prop="date" label="记账日期" width="120" />
         <el-table-column prop="period" label="期间" width="110" />
         <el-table-column prop="voucher_no" label="凭证号" width="100">
           <template #default="{ row }">
@@ -163,6 +164,7 @@ function viewVoucher(row) {
 
 async function exportJournal() {
   const headers = [
+    { key: 'date', label: '记账日期' },
     { key: 'period', label: '期间' },
     { key: 'voucher_no', label: '凭证号' },
     { key: 'summary', label: '摘要' },
@@ -215,7 +217,7 @@ defineExpose({ loadData })
 .subject-code {
   color: var(--text-secondary, #909399); font-size: 12px;
   background: var(--bg-light, #f5f7fa); padding: 1px 8px; border-radius: 4px;
-  font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  font-family: var(--font-number);
 }
 
 .filter-row { display: flex; gap: 8px; align-items: center; }
@@ -226,11 +228,11 @@ defineExpose({ loadData })
 .total-hint { font-size: 12px; color: var(--text-secondary, #909399); white-space: nowrap; }
 
 .amount-debit {
-  color: var(--text-primary, #303133); font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  color: var(--text-primary, #303133); font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 .amount-credit {
-  color: #e23c3c; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+  color: #e23c3c; font-family: var(--font-number);
   font-variant-numeric: tabular-nums;
 }
 

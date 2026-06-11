@@ -19,6 +19,7 @@ function saveSettings(settings) {
 const defaults = {
   showDimensionSubjects: true,
   showCounterpartSubject: false,
+  hideZeroSubjects: false,
 }
 
 const saved = loadSettings()
