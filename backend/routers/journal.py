@@ -164,6 +164,7 @@ async def get_subject_journal(
     keyword: Optional[str] = Query(None, description="模糊搜索：摘要、科目编码、科目名称"),
     include_children: bool = Query(False, description="都包含子科目的序时账"),
     with_counterpart: bool = Query(False, description="是否计算对方科目（较慢）"),
+    export_mode: bool = Query(False, description="导出模式：不分页返回全部数据"),
     page: int = Query(1, ge=1),
     page_size: int = Query(500, ge=1, le=5000),
     book_name: str = Query("default"),
@@ -206,18 +207,27 @@ async def get_subject_journal(
     )
     total = count_result.scalar() or 0
 
-    offset = (page - 1) * page_size
-    result = await db.execute(
-        select(table)
-        .where(and_(*conditions))
-        .order_by(tc.period, tc.voucher_no)
-        .offset(offset)
-        .limit(page_size)
-    )
+    if export_mode:
+        result = await db.execute(
+            select(table)
+            .where(and_(*conditions))
+            .order_by(tc.period, tc.voucher_no)
+        )
+    else:
+        offset = (page - 1) * page_size
+        result = await db.execute(
+            select(table)
+            .where(and_(*conditions))
+            .order_by(tc.period, tc.voucher_no)
+            .offset(offset)
+            .limit(page_size)
+        )
     entries = result.all()
 
     if not entries:
-        return {"entries": [], "total": total, "page": page, "page_size": page_size}
+        resp_page = 0 if export_mode else page
+        resp_page_size = 0 if export_mode else page_size
+        return {"entries": [], "total": total, "page": resp_page, "page_size": resp_page_size}
 
     counterpart_map = {}
     if with_counterpart and entries:
@@ -261,7 +271,9 @@ async def get_subject_journal(
         map_key = (e.period, e.voucher_no, e.subject_code, e.summary or '')
         result_list.append(_serialize_entry(e, counterpart_map.get(map_key, '')))
 
-    return {"entries": result_list, "total": total, "page": page, "page_size": page_size}
+    resp_page = 0 if export_mode else page
+    resp_page_size = 0 if export_mode else page_size
+    return {"entries": result_list, "total": total, "page": resp_page, "page_size": resp_page_size}
 
 
 @router.get("/voucher/{voucher_no}", response_model=list[JournalEntryResponse])

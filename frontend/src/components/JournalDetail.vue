@@ -163,6 +163,7 @@ function viewVoucher(row) {
 }
 
 async function exportJournal() {
+  if (!props.selectedSubject) return
   const headers = [
     { key: 'date', label: '记账日期' },
     { key: 'period', label: '期间' },
@@ -178,20 +179,37 @@ async function exportJournal() {
   headers.push({ key: 'credit', label: '贷方金额' })
   const label = props.selectedSubject?.name || ''
   const code = props.selectedSubject?.code || ''
-  await exportToExcel({
-    data: journalData.value.map(r => ({
-      ...r,
-      debit: r.debit || 0,
-      credit: r.credit || 0,
-      counterpart: r.counterpart || '-',
-    })),
-    headers,
-    filename: `序时账_${label}_${code}.xlsx`,
-    sheetName: '序时账明细',
-    title: '序时账明细',
-    subtitle: `科目：${label}（${code}）`,
-    amountKeys: ['debit', 'credit'],
-  })
+
+  const level = getLevel(code)
+  const params = {}
+  if (filterPeriod.value) params.period = filterPeriod.value
+  if (filterVoucher.value) params.voucher_no = filterVoucher.value
+  if (filterKeyword.value) params.keyword = filterKeyword.value
+  params.include_children = level === 1
+  params.with_counterpart = settings.showCounterpartSubject
+  params.export_mode = true
+
+  loading.value = true
+  try {
+    const data = await getSubjectJournal(props.selectedSubject.code, params)
+    const allEntries = (data && data.entries) ? data.entries : []
+    await exportToExcel({
+      data: allEntries.map(r => ({
+        ...r,
+        debit: r.debit || 0,
+        credit: r.credit || 0,
+        counterpart: r.counterpart || '-',
+      })),
+      headers,
+      filename: `序时账_${label}_${code}.xlsx`,
+      sheetName: '序时账明细',
+      title: '序时账明细',
+      subtitle: `科目：${label}（${code}）${level === 1 ? '（含子科目）' : ''}`,
+      amountKeys: ['debit', 'credit'],
+    })
+  } finally {
+    loading.value = false
+  }
 }
 
 defineExpose({ loadData })
